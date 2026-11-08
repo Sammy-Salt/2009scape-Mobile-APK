@@ -1,6 +1,6 @@
-<h1 align="center">2009Scape Mobile - DaveRune's Fork</h1>
+<h1 align="center">2009Scape Mobile with single player/offline Sammy-Salt's Fork</h1>
 
-## A mobile app to play a more recent 2009Scape with bug fixes.
+## A mobile app to play a more recent 2009Scape with bug fixes and single player/offline mode included. Optimizations for low end devices.
 
 <p align="center">
   <img src="docs/screenshots/gameplay.jpg" alt="Falador, running on a tablet"/>
@@ -16,9 +16,9 @@ https://github.com/user-attachments/assets/8d1181a8-fec6-4163-9769-80c54d956de3
 
 ## What is this?
 
-An unofficial fork of [2009scape/2009Scape-mobile](https://github.com/2009scape/2009Scape-mobile), which is itself an unofficial Android app for playing 2009Scape, built on PojavLauncher.
+An unofficial fork of [DaveRune's fork](https://github.com/DaveRune/2009Scape-mobile) which is a fork of [2009scape/2009Scape-mobile](https://github.com/2009scape/2009Scape-mobile), which is itself an unofficial Android app for playing 2009Scape, built on PojavLauncher.
 
-I built this for me. I wanted to play 2009Scape on my tablet, I found the existing app had been sitting untouched since 2024, and fixed the things that were stopping me enjoying it. It works well enough now that it seemed worth sharing.
+I'm made this to include Dave's additions while also bundling a single-player/offline mode into the app and optimize it for low end phones
 
 I am not committing to maintaining it, supporting it, or taking requests. There is no roadmap and there are no promises. If it is useful to you, please use it and I hope you enjoy it too.
 
@@ -61,17 +61,7 @@ I used AI.
 
 Battery use might still be high.
 
-## Install
 
-Grab the APK from [Releases](https://github.com/DaveRune/2009Scape-mobile/releases) and install it. Android will warn you about installing outside the Play Store, which is expected.
-
-## Build
-
-Needs the Android SDK with platform 33, build tools 33.0.2 and NDK 25.2.9519653, and a JDK 17.
-
-```bash
-./gradlew :app_pojavlauncher:assembleDebug
-```
 
 ## Where everything comes from
 
@@ -81,5 +71,6 @@ Needs the Android SDK with platform 33, build tools 33.0.2 and NDK 25.2.9519653,
 | The game client | [DaveRune/rt4-client](https://github.com/DaveRune/rt4-client), forked from [downthecrop/rt4-client](https://gitlab.com/downthecrop/rt4-client) |
 | The desktop client | [2009scape/rt4-client](https://gitlab.com/2009scape/rt4-client) |
 | The server | 2009Scape, which I have nothing to do with |
+[DaveRune's fork](https://github.com/DaveRune/2009Scape-mobile)
 
 Licensed GPL-3.0, same as the project it came from. See [LICENSE](LICENSE).
