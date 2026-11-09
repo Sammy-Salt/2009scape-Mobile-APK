@@ -45,7 +45,11 @@ public class ScapeLauncher extends BaseActivity {
 
         playSD.setOnClickListener(view -> {
             if(!runtimeReady()) return;
-            Intent intent = new Intent(ScapeLauncher.this, JavaGUILauncherActivity.class);
+            // SD uses the same GLFW/MainActivity path as HD (JavaGUI has no native
+            // window surface, so LWJGL pojavInit null-derefs). Apply a low-end
+            // resolution preset via intent extra.
+            Intent intent = new Intent(ScapeLauncher.this, MainActivity.class);
+            intent.putExtra("low_end_preset", true);
             startActivity(intent);
         });
         settings.setOnClickListener(view -> showBottomDialog());
