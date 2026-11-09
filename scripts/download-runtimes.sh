@@ -34,6 +34,28 @@ install_runtime() {
   for item in universal.tar.xz bin-arm.tar.xz bin-arm64.tar.xz bin-x86.tar.xz bin-x86_64.tar.xz; do
     tar -tJf "$destination/$item" >/dev/null
   done
+
+  # libfontmanager.so needs the matching FreeType shared library at runtime.
+  for item in bin-arm.tar.xz bin-arm64.tar.xz bin-x86.tar.xz bin-x86_64.tar.xz; do
+    if ! tar -tJf "$destination/$item" | grep -Eq '(^|/)libfreetype\\.so(\\.6)?}
+
+install_runtime "jre8" "$JRE8_URL" "$JRE8_SHA256" "$ROOT/app_pojavlauncher/src/main/assets/components/jre"
+install_runtime "jre17" "$JRE17_URL" "$JRE17_SHA256" "$ROOT/app_pojavlauncher/src/main/assets/components/jre-new"
+
+mkdir -p "$ROOT/out"
+cat > "$ROOT/out/runtime-sources.txt" <<EOF
+JRE 8 URL: $JRE8_URL
+JRE 8 SHA-256: $JRE8_SHA256
+JRE 17 URL: $JRE17_URL
+JRE 17 SHA-256: $JRE17_SHA256
+EOF
+
+echo "Verified JRE 8 and JRE 17 runtime archives for ARM32, ARM64, x86, and x86_64."
+; then
+      echo "Missing FreeType shared library in ${label}/${item}." >&2
+      exit 1
+    fi
+  done
 }
 
 install_runtime "jre8" "$JRE8_URL" "$JRE8_SHA256" "$ROOT/app_pojavlauncher/src/main/assets/components/jre"
