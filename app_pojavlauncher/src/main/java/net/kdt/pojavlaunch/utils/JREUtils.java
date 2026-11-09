@@ -74,6 +74,14 @@ public class JREUtils {
     }
 
     public static void initJavaRuntime(String jreHome) {
+        // The Android runtime package may contain libfreetype.so.6 while
+        // libfontmanager.so requests the unversioned libfreetype.so name.
+        // Prepare the runtime on every launch so existing installs are repaired too.
+        try {
+            MultiRTUtils.postPrepare(new File(jreHome).getName());
+        } catch (IOException e) {
+            throw new RuntimeException("Failed to prepare runtime native libraries", e);
+        }
         dlopen(findInLdLibPath("libjli.so"));
         if(!dlopen("libjvm.so")){
             Log.w("DynamicLoader","Failed to load with no path, trying with full path");
