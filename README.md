@@ -74,3 +74,7 @@ Battery use might still be high.
 [DaveRune's fork](https://github.com/DaveRune/2009Scape-mobile)
 
 Licensed GPL-3.0, same as the project it came from. See [LICENSE](LICENSE).
+
+## Mobile crash-fix notes
+
+See [CHANGELOG-mobile.md](CHANGELOG-mobile.md) for LWJGL, Play SD, and Mali gl4es changes (Nov 2026).
