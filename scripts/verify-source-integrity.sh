@@ -25,6 +25,7 @@ check_size "$GUI" 5000
 grep -q 'public final class Tools' "$TOOLS"
 grep -q 'getLWJGL3ClassPathPublic' "$TOOLS"
 grep -q 'public static int launchJavaVM' "$JRE"
+grep -q 'MultiRTUtils.postPrepare' "$JRE"
 grep -q 'Java_net_kdt_pojavlaunch_utils_JREUtils_setupBridgeWindow' "$EGL"
 grep -q 'Java_org_lwjgl_opengl_GL_getNativeWidthHeight' "$EGL"
 grep -q 'JavaGUILauncherActivity' "$TOOLS"
