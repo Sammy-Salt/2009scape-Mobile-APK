@@ -78,6 +78,19 @@
         app:layout_constraintBottom_toBottomOf="parent"
         tools:layout_editor_absoluteX="-1dp" />
 
+    <Button
+        android:id="@+id/exportLog"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="20dp"
+        android:layout_marginBottom="46dp"
+        android:backgroundTint="#3A2D16"
+        android:text="Export log"
+        android:textAllCaps="false"
+        android:textColor="#B8A078"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent" />
+
     <TextView
         android:id="@+id/scapebranding"
         android:layout_width="wrap_content"
