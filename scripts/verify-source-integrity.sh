@@ -4,6 +4,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TOOLS="$ROOT/app_pojavlauncher/src/main/java/net/kdt/pojavlaunch/Tools.java"
 JRE="$ROOT/app_pojavlauncher/src/main/java/net/kdt/pojavlaunch/utils/JREUtils.java"
+MULTIRT="$ROOT/app_pojavlauncher/src/main/java/net/kdt/pojavlaunch/multirt/MultiRTUtils.java"
 EGL="$ROOT/app_pojavlauncher/src/main/jni/egl_bridge.c"
 GUI="$ROOT/app_pojavlauncher/src/main/java/net/kdt/pojavlaunch/JavaGUILauncherActivity.java"
 GUI_LAYOUT="$ROOT/app_pojavlauncher/src/main/res/layout/activity_java_gui_launcher.xml"
@@ -26,6 +27,12 @@ grep -q 'public final class Tools' "$TOOLS"
 grep -q 'getLWJGL3ClassPathPublic' "$TOOLS"
 grep -q 'public static int launchJavaVM' "$JRE"
 grep -q 'MultiRTUtils.postPrepare' "$JRE"
+grep -Fq 'Os.symlink(tarEntry.getLinkName(), destPath.getAbsolutePath())' "$MULTIRT"
+grep -q 'findFreetypeLibrary(dest)' "$MULTIRT"
+if grep -Fq 'Os.symlink(tarEntry.getName(), tarEntry.getLinkName())' "$MULTIRT"; then
+  echo "Runtime symlink target/path order is incorrect." >&2
+  exit 1
+fi
 grep -q 'Java_net_kdt_pojavlaunch_utils_JREUtils_setupBridgeWindow' "$EGL"
 grep -q 'Java_org_lwjgl_opengl_GL_getNativeWidthHeight' "$EGL"
 grep -q 'JavaGUILauncherActivity' "$TOOLS"
