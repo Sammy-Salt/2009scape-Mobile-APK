@@ -291,12 +291,12 @@ public class MultiRTUtils {
                 try {
                     // android.system.Os
                     // Libcore one support all Android versions
-                    if (destPath.exists() && !destPath.delete()) {
+                    if (!destPath.delete() && destPath.exists()) {
                         throw new IOException("Failed to replace runtime symlink: " + destPath);
                     }
                     Os.symlink(tarEntry.getLinkName(), destPath.getAbsolutePath());
                 } catch (Throwable e) {
-                    Log.e("MultiRT", e.toString());
+                    throw new IOException("Failed to create runtime symlink: " + destPath, e);
                 }
 
             } else if (tarEntry.isDirectory()) {
