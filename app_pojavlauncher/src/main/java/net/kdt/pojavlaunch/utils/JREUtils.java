@@ -73,7 +73,13 @@ public class JREUtils {
         return returnValue;
     }
 
+    private static void logRuntimeNativeCheck(String message) {
+        Logger.appendToLog("[RuntimeNativeCheck] " + message);
+        Log.i("RuntimeNativeCheck", message);
+    }
+
     public static void initJavaRuntime(String jreHome) {
+        Logger.appendToLog("[RuntimeNativeCheck] initJavaRuntime: starting runtime preparation");
         // The Android runtime package may contain libfreetype.so.6 while
         // libfontmanager.so requests the unversioned libfreetype.so name.
         // Prepare the runtime on every launch so existing installs are repaired too.
@@ -95,35 +101,37 @@ public class JREUtils {
         dlopen(findInLdLibPath("libawt.so"));
         dlopen(findInLdLibPath("libawt_headless.so"));
 
-        // Diagnose the exact files and native-loader results before AWT initializes.
+        // Write diagnostics directly to the launcher log: redirected logcat filters tags.
+        logRuntimeNativeCheck("initJavaRuntime: checking AWT native dependencies");
         File runtimeLibDir = new File(jreHome, Tools.DIRNAME_HOME_JRE);
         File freetypeFile = new File(runtimeLibDir, "libfreetype.so");
         File fontManagerFile = new File(runtimeLibDir, "libfontmanager.so");
         String[] runtimeLibEntries = runtimeLibDir.list();
-        Log.i("RuntimeNativeCheck", "Runtime lib dir=" + runtimeLibDir.getAbsolutePath()
+        logRuntimeNativeCheck("Runtime lib dir=" + runtimeLibDir.getAbsolutePath()
                 + ", exists=" + runtimeLibDir.isDirectory()
                 + ", entries=" + Arrays.toString(runtimeLibEntries));
-        Log.i("RuntimeNativeCheck", "FreeType path=" + freetypeFile.getAbsolutePath()
+        logRuntimeNativeCheck("FreeType path=" + freetypeFile.getAbsolutePath()
                 + ", exists=" + freetypeFile.exists()
                 + ", file=" + freetypeFile.isFile()
                 + ", readable=" + freetypeFile.canRead()
                 + ", bytes=" + (freetypeFile.exists() ? freetypeFile.length() : -1));
         if (freetypeFile.exists()) {
             try {
-                Log.i("RuntimeNativeCheck", "FreeType canonical=" + freetypeFile.getCanonicalPath());
+                logRuntimeNativeCheck("FreeType canonical=" + freetypeFile.getCanonicalPath());
             } catch (IOException e) {
-                Log.w("RuntimeNativeCheck", "Could not resolve FreeType canonical path", e);
+                logRuntimeNativeCheck("Could not resolve FreeType canonical path: " + Log.getStackTraceString(e));
             }
         }
         boolean freetypeLoaded = freetypeFile.isFile() && dlopen(freetypeFile.getAbsolutePath());
-        Log.i("RuntimeNativeCheck", "FreeType dlopen=" + freetypeLoaded);
-        Log.i("RuntimeNativeCheck", "FontManager path=" + fontManagerFile.getAbsolutePath()
+        logRuntimeNativeCheck("FreeType dlopen=" + freetypeLoaded);
+        logRuntimeNativeCheck("FontManager path=" + fontManagerFile.getAbsolutePath()
                 + ", exists=" + fontManagerFile.exists()
                 + ", file=" + fontManagerFile.isFile()
                 + ", bytes=" + (fontManagerFile.exists() ? fontManagerFile.length() : -1));
         boolean fontManagerLoaded = fontManagerFile.isFile()
                 && dlopen(fontManagerFile.getAbsolutePath());
-        Log.i("RuntimeNativeCheck", "FontManager dlopen=" + fontManagerLoaded);
+        logRuntimeNativeCheck("FontManager dlopen=" + fontManagerLoaded);
+        logRuntimeNativeCheck("initJavaRuntime: native dependency checks complete");
 
         for(File f : locateLibs(new File(jreHome, Tools.DIRNAME_HOME_JRE))) {
             dlopen(f.getAbsolutePath());
@@ -323,9 +331,12 @@ public class JREUtils {
         activity.runOnUiThread(() -> Toast.makeText(activity, activity.getString(R.string.autoram_info_msg,LauncherPreferences.PREF_RAM_ALLOCATION), Toast.LENGTH_SHORT).show());
         System.out.println(JVMArgs);
 
+        Logger.appendToLog("[RuntimeNativeCheck] Launch sequence: initializing Java runtime");
         initJavaRuntime(runtimeHome);
+        Logger.appendToLog("[RuntimeNativeCheck] Launch sequence: Java runtime initialized");
         setupExitTrap(activity.getApplication());
         chdir(gameDirectory == null ? Tools.DIR_GAME_NEW : gameDirectory.getAbsolutePath());
+        Logger.appendToLog("[RuntimeNativeCheck] Launch sequence: working directory set; entering VMLauncher");
         userArgs.add(0,"java"); //argv[0] is the program name according to C standard.
 
         final int exitCode = VMLauncher.launchJVM(userArgs.toArray(new String[0]));
