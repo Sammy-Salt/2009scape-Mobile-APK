@@ -94,8 +94,37 @@ public class JREUtils {
         dlopen(findInLdLibPath("libnio.so"));
         dlopen(findInLdLibPath("libawt.so"));
         dlopen(findInLdLibPath("libawt_headless.so"));
-        dlopen(findInLdLibPath("libfreetype.so"));
-        dlopen(findInLdLibPath("libfontmanager.so"));
+
+        // Diagnose the exact files and native-loader results before AWT initializes.
+        File runtimeLibDir = new File(jreHome, Tools.DIRNAME_HOME_JRE);
+        File freetypeFile = new File(runtimeLibDir, "libfreetype.so");
+        File fontManagerFile = new File(runtimeLibDir, "libfontmanager.so");
+        String[] runtimeLibEntries = runtimeLibDir.list();
+        Log.i("RuntimeNativeCheck", "Runtime lib dir=" + runtimeLibDir.getAbsolutePath()
+                + ", exists=" + runtimeLibDir.isDirectory()
+                + ", entries=" + Arrays.toString(runtimeLibEntries));
+        Log.i("RuntimeNativeCheck", "FreeType path=" + freetypeFile.getAbsolutePath()
+                + ", exists=" + freetypeFile.exists()
+                + ", file=" + freetypeFile.isFile()
+                + ", readable=" + freetypeFile.canRead()
+                + ", bytes=" + (freetypeFile.exists() ? freetypeFile.length() : -1));
+        if (freetypeFile.exists()) {
+            try {
+                Log.i("RuntimeNativeCheck", "FreeType canonical=" + freetypeFile.getCanonicalPath());
+            } catch (IOException e) {
+                Log.w("RuntimeNativeCheck", "Could not resolve FreeType canonical path", e);
+            }
+        }
+        boolean freetypeLoaded = freetypeFile.isFile() && dlopen(freetypeFile.getAbsolutePath());
+        Log.i("RuntimeNativeCheck", "FreeType dlopen=" + freetypeLoaded);
+        Log.i("RuntimeNativeCheck", "FontManager path=" + fontManagerFile.getAbsolutePath()
+                + ", exists=" + fontManagerFile.exists()
+                + ", file=" + fontManagerFile.isFile()
+                + ", bytes=" + (fontManagerFile.exists() ? fontManagerFile.length() : -1));
+        boolean fontManagerLoaded = fontManagerFile.isFile()
+                && dlopen(fontManagerFile.getAbsolutePath());
+        Log.i("RuntimeNativeCheck", "FontManager dlopen=" + fontManagerLoaded);
+
         for(File f : locateLibs(new File(jreHome, Tools.DIRNAME_HOME_JRE))) {
             dlopen(f.getAbsolutePath());
         }
