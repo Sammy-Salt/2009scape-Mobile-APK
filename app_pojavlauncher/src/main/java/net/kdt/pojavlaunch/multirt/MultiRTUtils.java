@@ -8,6 +8,7 @@ import android.util.Log;
 
 import com.kdt.mcgui.ProgressLayout;
 
+import net.kdt.pojavlaunch.Logger;
 import net.kdt.pojavlaunch.R;
 import net.kdt.pojavlaunch.Tools;
 import net.kdt.pojavlaunch.utils.JREUtils;
@@ -26,6 +27,7 @@ import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 
 public class MultiRTUtils {
@@ -87,8 +89,12 @@ public class MultiRTUtils {
     }
 
     public static void postPrepare(String name) throws IOException {
+        Logger.appendToLog("[RuntimeNativeCheck] postPrepare: start name=" + name);
         File dest = new File(RUNTIME_FOLDER, name);
-        if (!dest.isDirectory()) return;
+        if (!dest.isDirectory()) {
+            Logger.appendToLog("[RuntimeNativeCheck] postPrepare: runtime dir missing, skip");
+            return;
+        }
 
         Runtime runtime = read(name);
         String libFolder = "lib";
@@ -97,13 +103,18 @@ public class MultiRTUtils {
 
         File libDir = new File(dest, libFolder);
         File ftOut = new File(libDir, "libfreetype.so");
+        Logger.appendToLog("[RuntimeNativeCheck] postPrepare: libDir=" + libDir.getAbsolutePath()
+                + " freetypeExists=" + ftOut.isFile() + " bytes=" + (ftOut.exists() ? ftOut.length() : -1));
         if (!ftOut.isFile() || ftOut.length() == 0) {
+            Logger.appendToLog("[RuntimeNativeCheck] postPrepare: searching for versioned FreeType");
             File ftIn = findFreetypeLibrary(dest);
             if (ftIn == null) {
                 String[] entries = libDir.list();
-                Log.e("MultiRT", "FreeType missing. Runtime=" + dest.getAbsolutePath()
+                String message = "FreeType missing. Runtime=" + dest.getAbsolutePath()
                         + ", arch=" + runtime.arch + ", libDir=" + libDir.getAbsolutePath()
-                        + ", entries=" + java.util.Arrays.toString(entries));
+                        + ", entries=" + java.util.Arrays.toString(entries);
+                Log.e("MultiRT", message);
+                Logger.appendToLog("[RuntimeNativeCheck] " + message);
                 throw new IOException("Runtime is missing libfreetype.so and its versioned library");
             }
 
@@ -121,26 +132,55 @@ public class MultiRTUtils {
                 in.close();
                 out.close();
             }
-            Log.i("MultiRT", "Prepared FreeType: " + ftIn.getAbsolutePath()
-                    + " -> " + ftOut.getAbsolutePath());
+            Logger.appendToLog("[RuntimeNativeCheck] Prepared FreeType: " + ftIn.getAbsolutePath()
+                    + " -> " + ftOut.getAbsolutePath() + " bytes=" + ftOut.length());
         }
 
         // Refresh libraries
+        Logger.appendToLog("[RuntimeNativeCheck] postPrepare: copying libawt_xawt.so");
         copyDummyNativeLib("libawt_xawt.so", dest, libFolder);
+        Logger.appendToLog("[RuntimeNativeCheck] postPrepare: done");
     }
 
-    private static File findFreetypeLibrary(File directory) {
+    private static boolean isSymlink(File file) {
+        try {
+            Os.readlink(file.getAbsolutePath());
+            return true;
+        } catch (Throwable ignored) {
+            return false;
+        }
+    }
+
+    private static File findFreetypeLibrary(File directory) throws IOException {
+        return findFreetypeLibrary(directory, new HashSet<String>());
+    }
+
+    private static File findFreetypeLibrary(File directory, HashSet<String> visited) throws IOException {
+        String key;
+        try {
+            key = directory.getCanonicalPath();
+        } catch (IOException e) {
+            key = directory.getAbsolutePath();
+        }
+        if (!visited.add(key)) return null;
+
         File[] children = directory.listFiles();
         if (children == null) return null;
         for (File child : children) {
+            String fileName = child.getName();
+            boolean nameMatch = fileName.equals("libfreetype.so.6")
+                    || fileName.matches("libfreetype\\.so\\.6\\..+");
+            // Directory symlinks in the JRE (lib64 -> lib, etc.) make an
+            // unguarded walk recurse forever and the launch log stops here.
+            if (isSymlink(child)) {
+                if (nameMatch && child.isFile() && child.length() > 0) return child;
+                continue;
+            }
             if (child.isDirectory()) {
-                File found = findFreetypeLibrary(child);
+                File found = findFreetypeLibrary(child, visited);
                 if (found != null) return found;
-            } else if (child.isFile()) {
-                String fileName = child.getName();
-                if (fileName.equals("libfreetype.so.6") || fileName.matches("libfreetype\\.so\\.6\\..+")) {
-                    return child;
-                }
+            } else if (nameMatch && child.isFile()) {
+                return child;
             }
         }
         return null;
