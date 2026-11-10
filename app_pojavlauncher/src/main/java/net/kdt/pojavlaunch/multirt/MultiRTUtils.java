@@ -87,19 +87,63 @@ public class MultiRTUtils {
     }
 
     public static void postPrepare(String name) throws IOException {
-        File dest = new File(RUNTIME_FOLDER,"/" + name);
-        if(!dest.exists()) return;
+        File dest = new File(RUNTIME_FOLDER, name);
+        if (!dest.isDirectory()) return;
+
         Runtime runtime = read(name);
         String libFolder = "lib";
-        if(new File(dest,libFolder + "/" + runtime.arch).exists()) libFolder = libFolder + "/" + runtime.arch;
-        File ftIn = new File(dest, libFolder + "/libfreetype.so.6");
-        File ftOut = new File(dest, libFolder + "/libfreetype.so");
-        if (ftIn.exists() && (!ftOut.exists() || ftIn.length() != ftOut.length())) {
-            if(!ftIn.renameTo(ftOut)) throw new IOException("Failed to rename freetype");
+        File archLibDir = new File(dest, libFolder + "/" + runtime.arch);
+        if (archLibDir.isDirectory()) libFolder = libFolder + "/" + runtime.arch;
+
+        File libDir = new File(dest, libFolder);
+        File ftOut = new File(libDir, "libfreetype.so");
+        if (!ftOut.isFile() || ftOut.length() == 0) {
+            File ftIn = findFreetypeLibrary(dest);
+            if (ftIn == null) {
+                String[] entries = libDir.list();
+                Log.e("MultiRT", "FreeType missing. Runtime=" + dest.getAbsolutePath()
+                        + ", arch=" + runtime.arch + ", libDir=" + libDir.getAbsolutePath()
+                        + ", entries=" + java.util.Arrays.toString(entries));
+                throw new IOException("Runtime is missing libfreetype.so and its versioned library");
+            }
+
+            // Copy rather than rename: keep the versioned SONAME file intact.
+            // Some runtime archives store libfreetype.so.6 as a symlink to
+            // libfreetype.so.6.x; the recursive search finds the real file.
+            if (ftOut.exists() && !ftOut.delete()) {
+                throw new IOException("Failed to replace invalid libfreetype.so");
+            }
+            FileInputStream in = new FileInputStream(ftIn);
+            FileOutputStream out = new FileOutputStream(ftOut);
+            try {
+                IOUtils.copy(in, out);
+            } finally {
+                in.close();
+                out.close();
+            }
+            Log.i("MultiRT", "Prepared FreeType: " + ftIn.getAbsolutePath()
+                    + " -> " + ftOut.getAbsolutePath());
         }
 
         // Refresh libraries
         copyDummyNativeLib("libawt_xawt.so", dest, libFolder);
+    }
+
+    private static File findFreetypeLibrary(File directory) {
+        File[] children = directory.listFiles();
+        if (children == null) return null;
+        for (File child : children) {
+            if (child.isDirectory()) {
+                File found = findFreetypeLibrary(child);
+                if (found != null) return found;
+            } else if (child.isFile()) {
+                String fileName = child.getName();
+                if (fileName.equals("libfreetype.so.6") || fileName.matches("libfreetype\\.so\\.6\\..+")) {
+                    return child;
+                }
+            }
+        }
+        return null;
     }
 
     public static void installRuntimeNamedBinpack(InputStream universalFileInputStream, InputStream platformBinsInputStream, String name, String binpackVersion) throws IOException {
@@ -247,7 +291,10 @@ public class MultiRTUtils {
                 try {
                     // android.system.Os
                     // Libcore one support all Android versions
-                    Os.symlink(tarEntry.getName(), tarEntry.getLinkName());
+                    if (destPath.exists() && !destPath.delete()) {
+                        throw new IOException("Failed to replace runtime symlink: " + destPath);
+                    }
+                    Os.symlink(tarEntry.getLinkName(), destPath.getAbsolutePath());
                 } catch (Throwable e) {
                     Log.e("MultiRT", e.toString());
                 }
