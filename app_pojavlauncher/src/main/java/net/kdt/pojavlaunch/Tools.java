@@ -164,6 +164,12 @@ public final class Tools {
         List<String> javaArgList = new ArrayList<>();
         javaArgList.add("-Dorg.lwjgl.util.NoChecks=true");
 
+        // The RT4 client otherwise restores the saved HD mode when Play SD is selected.
+        // Tell DisplayMode to keep this launch on its software SD path.
+        if (activity.getIntent() != null && activity.getIntent().getBooleanExtra("low_end_preset", false)) {
+            javaArgList.add("-DlaunchSD=true");
+        }
+
         getCacioJavaArgs(javaArgList, runtime.javaVersion == 8);
 
         javaArgList.add("-DconfigFile="+Tools.DIR_DATA + "/config.json");
