@@ -54,6 +54,13 @@ JRE17_DIR="$ROOT/app_pojavlauncher/src/main/assets/components/jre-new"
 install_runtime "jre8" "$JRE8_URL" "$JRE8_SHA256" "$JRE8_DIR"
 install_runtime "jre17" "$JRE17_URL" "$JRE17_SHA256" "$JRE17_DIR"
 
+# Show which upstream runtime archive actually carries FreeType before
+# enforcing the Android ABI requirements.
+for archive in "$JRE8_DIR/universal.tar.xz" "$JRE8_DIR/bin-arm64.tar.xz" "$JRE8_DIR/bin-arm.tar.xz" "$JRE17_DIR/universal.tar.xz" "$JRE17_DIR/bin-arm64.tar.xz" "$JRE17_DIR/bin-arm.tar.xz"; do
+  echo "FreeType entries in $archive:"
+  tar -tvJf "$archive" | grep -i freetype || echo "(none)"
+done
+
 # The upstream JRE 8 version has not changed since the broken runtime was first
 # installed. Bump the installed binpack version so devices replace the stale
 # Internal runtime instead of treating it as current.
