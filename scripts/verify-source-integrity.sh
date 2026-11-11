@@ -5,6 +5,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TOOLS="$ROOT/app_pojavlauncher/src/main/java/net/kdt/pojavlaunch/Tools.java"
 JRE="$ROOT/app_pojavlauncher/src/main/java/net/kdt/pojavlaunch/utils/JREUtils.java"
 MULTIRT="$ROOT/app_pojavlauncher/src/main/java/net/kdt/pojavlaunch/multirt/MultiRTUtils.java"
+RUNTIME_SCRIPT="$ROOT/scripts/download-runtimes.sh"
 EGL="$ROOT/app_pojavlauncher/src/main/jni/egl_bridge.c"
 GUI="$ROOT/app_pojavlauncher/src/main/java/net/kdt/pojavlaunch/JavaGUILauncherActivity.java"
 GUI_LAYOUT="$ROOT/app_pojavlauncher/src/main/res/layout/activity_java_gui_launcher.xml"
@@ -32,6 +33,9 @@ grep -q 'FreeType dlopen=' "$JRE"
 grep -q 'FontManager dlopen=' "$JRE"
 grep -Fq 'Os.symlink(tarEntry.getLinkName(), destPath.getAbsolutePath())' "$MULTIRT"
 grep -q 'findFreetypeLibrary(dest)' "$MULTIRT"
+grep -Fq 'fileName.equals("libfreetype.so")' "$MULTIRT"
+grep -q 'freetype-reextract-1' "$RUNTIME_SCRIPT"
+grep -q 'verify_freetype_archive' "$RUNTIME_SCRIPT"
 if grep -Fq 'Os.symlink(tarEntry.getName(), tarEntry.getLinkName())' "$MULTIRT"; then
   echo "Runtime symlink target/path order is incorrect." >&2
   exit 1
