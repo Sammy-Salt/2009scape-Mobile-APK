@@ -36,6 +36,47 @@ install_runtime() {
   done
 }
 
+verify_freetype_archive() {
+  local archive="$1" architecture="$2"
+  local listing
+  listing="$(tar -tvJf "$archive")"
+  if ! printf '%s\n' "$listing" | awk '$1 ~ /^-/ && $NF ~ /(^|\/)libfreetype\.so(\..*)?$/ { found=1 } END { exit !found }'; then
+    echo "Missing a regular FreeType library in " "$architecture" " runtime archive: $archive" >&2
+    printf '%s\n' "$listing" | grep -i freetype >&2 || true
+    exit 1
+  fi
+  echo "Verified " "$architecture" " FreeType payload:"
+  printf '%s\n' "$listing" | grep -E '(^|[[:space:]])[^[:space:]]*libfreetype\.so(\.[^[:space:]]*)?
+
+JRE8_DIR="$ROOT/app_pojavlauncher/src/main/assets/components/jre"
+JRE17_DIR="$ROOT/app_pojavlauncher/src/main/assets/components/jre-new"
+install_runtime "jre8" "$JRE8_URL" "$JRE8_SHA256" "$JRE8_DIR"
+install_runtime "jre17" "$JRE17_URL" "$JRE17_SHA256" "$JRE17_DIR"
+
+# The upstream JRE 8 version has not changed since the broken runtime was first
+# installed. Bump the installed binpack version so devices replace the stale
+# Internal runtime instead of treating it as current.
+verify_freetype_archive "$JRE8_DIR/bin-arm64.tar.xz" "ARM64"
+verify_freetype_archive "$JRE8_DIR/bin-arm.tar.xz" "ARM32"
+JRE8_UPSTREAM_VERSION="$(tr -d '\r\n' < "$JRE8_DIR/version")"
+[[ -n "$JRE8_UPSTREAM_VERSION" ]] || { echo "JRE 8 version marker is empty." >&2; exit 1; }
+printf '%s-freetype-reextract-1\n' "$JRE8_UPSTREAM_VERSION" > "$JRE8_DIR/version"
+
+mkdir -p "$ROOT/out"
+cat > "$ROOT/out/runtime-sources.txt" <<EOF
+JRE 8 URL: $JRE8_URL
+JRE 8 SHA-256: $JRE8_SHA256
+JRE 8 upstream version: $JRE8_UPSTREAM_VERSION
+JRE 8 installed version: $(cat "$JRE8_DIR/version")
+JRE 8 local runtime revision: freetype-reextract-1
+JRE 17 URL: $JRE17_URL
+JRE 17 SHA-256: $JRE17_SHA256
+EOF
+
+echo "Verified JRE 8 and JRE 17 runtime archives for ARM32, ARM64, x86, and x86_64."
+ || true
+}
+
 install_runtime "jre8" "$JRE8_URL" "$JRE8_SHA256" "$ROOT/app_pojavlauncher/src/main/assets/components/jre"
 install_runtime "jre17" "$JRE17_URL" "$JRE17_SHA256" "$ROOT/app_pojavlauncher/src/main/assets/components/jre-new"
 
