@@ -16,7 +16,7 @@ install_runtime() {
 
   echo "Downloading ${label} runtime..."
   curl --fail --location --retry 3 --retry-all-errors --silent --show-error "$url" -o "$archive"
-  echo "${expected_sha}  ${archive}" | sha256sum --check --status || {
+  echo "$expected_sha  $archive" | sha256sum --check --status || {
     echo "SHA-256 mismatch for ${label} runtime." >&2
     exit 1
   }
@@ -41,12 +41,13 @@ verify_freetype_archive() {
   local listing
   listing="$(tar -tvJf "$archive")"
   if ! printf '%s\n' "$listing" | awk '$1 ~ /^-/ && $NF ~ /(^|\/)libfreetype\.so(\..*)?$/ { found=1 } END { exit !found }'; then
-    echo "Missing a regular FreeType library in " "$architecture" " runtime archive: $archive" >&2
+    echo "Missing a regular FreeType library in $architecture runtime archive: $archive" >&2
     printf '%s\n' "$listing" | grep -i freetype >&2 || true
     exit 1
   fi
-  echo "Verified " "$architecture" " FreeType payload:"
-  printf '%s\n' "$listing" | grep -E '(^|[[:space:]])[^[:space:]]*libfreetype\.so(\.[^[:space:]]*)?
+  echo "Verified $architecture FreeType payload:"
+  printf '%s\n' "$listing" | grep -E '(^|[[:space:]])[^[:space:]]*libfreetype\.so(\.[^[:space:]]*)?$' || true
+}
 
 JRE8_DIR="$ROOT/app_pojavlauncher/src/main/assets/components/jre"
 JRE17_DIR="$ROOT/app_pojavlauncher/src/main/assets/components/jre-new"
@@ -69,21 +70,6 @@ JRE 8 SHA-256: $JRE8_SHA256
 JRE 8 upstream version: $JRE8_UPSTREAM_VERSION
 JRE 8 installed version: $(cat "$JRE8_DIR/version")
 JRE 8 local runtime revision: freetype-reextract-1
-JRE 17 URL: $JRE17_URL
-JRE 17 SHA-256: $JRE17_SHA256
-EOF
-
-echo "Verified JRE 8 and JRE 17 runtime archives for ARM32, ARM64, x86, and x86_64."
- || true
-}
-
-install_runtime "jre8" "$JRE8_URL" "$JRE8_SHA256" "$ROOT/app_pojavlauncher/src/main/assets/components/jre"
-install_runtime "jre17" "$JRE17_URL" "$JRE17_SHA256" "$ROOT/app_pojavlauncher/src/main/assets/components/jre-new"
-
-mkdir -p "$ROOT/out"
-cat > "$ROOT/out/runtime-sources.txt" <<EOF
-JRE 8 URL: $JRE8_URL
-JRE 8 SHA-256: $JRE8_SHA256
 JRE 17 URL: $JRE17_URL
 JRE 17 SHA-256: $JRE17_SHA256
 EOF
