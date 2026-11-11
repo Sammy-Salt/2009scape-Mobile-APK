@@ -168,8 +168,8 @@ public class MultiRTUtils {
         if (children == null) return null;
         for (File child : children) {
             String fileName = child.getName();
-            boolean nameMatch = fileName.equals("libfreetype.so.6")
-                    || fileName.matches("libfreetype\\.so\\.6\\..+");
+            boolean nameMatch = fileName.equals("libfreetype.so")
+                    || fileName.startsWith("libfreetype.so.");
             // Directory symlinks in the JRE (lib64 -> lib, etc.) make an
             // unguarded walk recurse forever and the launch log stops here.
             if (isSymlink(child)) {
@@ -179,7 +179,7 @@ public class MultiRTUtils {
             if (child.isDirectory()) {
                 File found = findFreetypeLibrary(child, visited);
                 if (found != null) return found;
-            } else if (nameMatch && child.isFile()) {
+            } else if (nameMatch && child.isFile() && child.length() > 0) {
                 return child;
             }
         }
