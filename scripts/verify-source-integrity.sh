@@ -34,8 +34,8 @@ grep -q 'FontManager dlopen=' "$JRE"
 grep -Fq 'Os.symlink(tarEntry.getLinkName(), destPath.getAbsolutePath())' "$MULTIRT"
 grep -q 'findFreetypeLibrary(dest)' "$MULTIRT"
 grep -Fq 'fileName.equals("libfreetype.so")' "$MULTIRT"
-grep -q 'freetype-reextract-1' "$RUNTIME_SCRIPT"
-grep -q 'verify_freetype_archive' "$RUNTIME_SCRIPT"
+grep -q 'freetype-reextract-2' "$RUNTIME_SCRIPT"
+grep -q 'inject_freetype' "$RUNTIME_SCRIPT"
 if grep -Fq 'Os.symlink(tarEntry.getName(), tarEntry.getLinkName())' "$MULTIRT"; then
   echo "Runtime symlink target/path order is incorrect." >&2
   exit 1
