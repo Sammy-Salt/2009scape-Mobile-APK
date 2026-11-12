@@ -159,6 +159,7 @@ public class MainActivity extends BaseActivity implements ControlButtonMenuListe
                     case 2: dialogSendCustomKey(); break;
                     case 3: adjustMouseSpeedLive(); break;
                     case 5: openCustomControls(); break;
+                    case 6: Tools.shareLog(MainActivity.this); break;
                 }
                 drawerLayout.closeDrawers();
             };
