@@ -123,9 +123,11 @@ public class JavaGUILauncherActivity extends BaseActivity implements View.OnTouc
             }
         });
 
-        // Launch runtime
+        // Launch runtime only after the Android Surface has been attached to the native EGL bridge.
         new Thread(() -> {
             try {
+                mTextureView.awaitBridgeWindowReady();
+                Log.i("JavaGUILauncher", "Native bridge window is ready; starting Java runtime");
                 Runtime runtime = MultiRTUtils.forceReread("Internal");
                 int code = launchJavaRuntime(runtime, null);
                 Log.i("JavaGUILauncher", "launchJavaRuntime returned " + code);
