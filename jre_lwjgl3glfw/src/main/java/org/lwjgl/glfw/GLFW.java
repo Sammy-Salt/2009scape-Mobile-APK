@@ -803,12 +803,23 @@ public class GLFW
 
     static boolean isGLFWReady;
     public static boolean glfwInit() {
+        System.out.println("SD-EGL-DIAG Java GLFW.glfwInit enter ready=" + isGLFWReady);
         if (!isGLFWReady) {
             //CallbackBridge.nativeAttachThreadToOther(false, false);
             mGLFWInitialTime = (double) System.nanoTime();
             long __functionAddress = Functions.Init;
-            isGLFWReady = invokeI(__functionAddress) != 0;
+            System.out.println("SD-EGL-DIAG Java GLFW.glfwInit nativeFunction=0x" + Long.toHexString(__functionAddress));
+            if (__functionAddress == 0L) {
+                System.err.println("SD-EGL-DIAG Java GLFW.glfwInit aborted: pojavInit symbol address is zero");
+                return false;
+            }
+            int nativeInitResult = invokeI(__functionAddress);
+            System.out.println("SD-EGL-DIAG Java GLFW.glfwInit nativeResult=" + nativeInitResult);
+            isGLFWReady = nativeInitResult != 0;
+        } else {
+            System.out.println("SD-EGL-DIAG Java GLFW.glfwInit skipped native call: already initialized");
         }
+        System.out.println("SD-EGL-DIAG Java GLFW.glfwInit exit ready=" + isGLFWReady);
         return isGLFWReady;
     }
 
