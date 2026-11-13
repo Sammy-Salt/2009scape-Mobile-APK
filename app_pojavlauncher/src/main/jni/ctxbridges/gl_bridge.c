@@ -40,7 +40,7 @@ static void diagLog(int priority, const char* format, ...) {
     if (used >= sizeof(message)) used = sizeof(message) - 1;
 
     const char* home = getenv("HOME");
-    if (home == NULL || home[0] == '\\0') return;
+    if (home == NULL || home[0] == '\0') return;
     char path[4096];
     int pathLength = snprintf(path, sizeof(path), "%s/latestlog.txt", home);
     if (pathLength < 0 || (size_t) pathLength >= sizeof(path)) return;
@@ -48,7 +48,7 @@ static void diagLog(int priority, const char* format, ...) {
     int fd = open(path, O_WRONLY | O_CREAT | O_APPEND, 0600);
     if (fd < 0) return;
     char line[800];
-    int lineLength = snprintf(line, sizeof(line), "[native-EGL] %.*s\\n", (int) used, message);
+    int lineLength = snprintf(line, sizeof(line), "[native-EGL] %.*s\n", (int) used, message);
     if (lineLength > 0 && (size_t) lineLength < sizeof(line)) {
         (void) write(fd, line, (size_t) lineLength);
     }
