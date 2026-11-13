@@ -7,6 +7,10 @@
 #include <stdlib.h>
 #include <dlfcn.h>
 #include <stdbool.h>
+#include <stdarg.h>
+#include <stdio.h>
+#include <fcntl.h>
+#include <unistd.h>
 #include <environ/environ.h>
 #include "gl_bridge.h"
 #include "egl_loader.h"
@@ -18,6 +22,39 @@
 #define STATE_RENDERER_ALIVE 0
 #define STATE_RENDERER_NEW_WINDOW 1
 static const char* g_LogTag = "GLBridge";
+
+// Mirror EGL diagnostics into the same log file shared by the launcher.
+// HOME is set to Tools.DIR_GAME_HOME before the Java runtime/native client starts.
+static void diagLog(int priority, const char* format, ...) {
+    char message[768];
+    va_list args;
+    va_start(args, format);
+    va_list logArgs;
+    va_copy(logArgs, args);
+    __android_log_vprint(priority, g_LogTag, format, logArgs);
+    va_end(logArgs);
+    int length = vsnprintf(message, sizeof(message), format, args);
+    va_end(args);
+    if (length < 0) return;
+    size_t used = (size_t) length;
+    if (used >= sizeof(message)) used = sizeof(message) - 1;
+
+    const char* home = getenv("HOME");
+    if (home == NULL || home[0] == '\\0') return;
+    char path[4096];
+    int pathLength = snprintf(path, sizeof(path), "%s/latestlog.txt", home);
+    if (pathLength < 0 || (size_t) pathLength >= sizeof(path)) return;
+
+    int fd = open(path, O_WRONLY | O_CREAT | O_APPEND, 0600);
+    if (fd < 0) return;
+    char line[800];
+    int lineLength = snprintf(line, sizeof(line), "[native-EGL] %.*s\\n", (int) used, message);
+    if (lineLength > 0 && (size_t) lineLength < sizeof(line)) {
+        (void) write(fd, line, (size_t) lineLength);
+    }
+    close(fd);
+}
+
 static __thread render_window_t* currentBundle;
 static EGLDisplay g_EglDisplay;
 static __thread unsigned int g_swapCount;
@@ -25,7 +62,7 @@ static __thread bool g_loggedNullSwap;
 
 static void logEglFailure(const char* stage) {
     EGLint error = eglGetError_p();
-    __android_log_print(ANDROID_LOG_ERROR, g_LogTag,
+    diagLog(ANDROID_LOG_ERROR,
                         "SD-EGL-DIAG %s failed: EGL=0x%04x display=%p current=%p surface=%p",
                         stage, error, g_EglDisplay, currentBundle,
                         currentBundle ? currentBundle->surface : EGL_NO_SURFACE);
@@ -33,7 +70,7 @@ static void logEglFailure(const char* stage) {
 
 bool gl_init() {
     EGLint major = 0, minor = 0;
-    __android_log_print(ANDROID_LOG_INFO, g_LogTag, "SD-EGL-DIAG gl_init begin");
+    diagLog(ANDROID_LOG_INFO, "SD-EGL-DIAG gl_init begin");
     dlsym_EGL();
     g_EglDisplay = eglGetDisplay_p(EGL_DEFAULT_DISPLAY);
     if (g_EglDisplay == EGL_NO_DISPLAY) {
@@ -44,7 +81,7 @@ bool gl_init() {
         logEglFailure("eglInitialize");
         return false;
     }
-    __android_log_print(ANDROID_LOG_INFO, g_LogTag,
+    diagLog(ANDROID_LOG_INFO,
                         "SD-EGL-DIAG eglInitialize OK display=%p version=%d.%d",
                         g_EglDisplay, major, minor);
     return true;
@@ -53,7 +90,7 @@ bool gl_init() {
 render_window_t* gl_init_context(render_window_t *share) {
     render_window_t* bundle = calloc(1, sizeof(render_window_t));
     if (bundle == NULL) {
-        __android_log_print(ANDROID_LOG_ERROR, g_LogTag, "SD-EGL-DIAG gl_init_context: allocation failed");
+        diagLog(ANDROID_LOG_ERROR, "SD-EGL-DIAG gl_init_context: allocation failed");
         return NULL;
     }
 
@@ -61,7 +98,7 @@ render_window_t* gl_init_context(render_window_t *share) {
         EGL_ALPHA_SIZE, 8, EGL_DEPTH_SIZE, 24, EGL_SURFACE_TYPE,
         EGL_WINDOW_BIT|EGL_PBUFFER_BIT, EGL_RENDERABLE_TYPE, EGL_OPENGL_ES2_BIT, EGL_NONE };
     EGLint num_configs = 0;
-    __android_log_print(ANDROID_LOG_INFO, g_LogTag,
+    diagLog(ANDROID_LOG_INFO,
                         "SD-EGL-DIAG gl_init_context begin display=%p share=%p",
                         g_EglDisplay, share);
 
@@ -71,7 +108,7 @@ render_window_t* gl_init_context(render_window_t *share) {
         return NULL;
     }
     if (num_configs == 0) {
-        __android_log_print(ANDROID_LOG_ERROR, g_LogTag,
+        diagLog(ANDROID_LOG_ERROR,
                             "SD-EGL-DIAG eglChooseConfig returned zero configs");
         free(bundle);
         return NULL;
@@ -110,7 +147,7 @@ render_window_t* gl_init_context(render_window_t *share) {
         free(bundle);
         return NULL;
     }
-    __android_log_print(ANDROID_LOG_INFO, g_LogTag,
+    diagLog(ANDROID_LOG_INFO,
                         "SD-EGL-DIAG eglCreateContext OK context=%p ES=%d config=%p format=%d",
                         bundle->context, libgl_es, bundle->config, bundle->format);
     return bundle;
@@ -118,10 +155,10 @@ render_window_t* gl_init_context(render_window_t *share) {
 
 void gl_swap_surface(render_window_t* bundle) {
     if (bundle == NULL) {
-        __android_log_print(ANDROID_LOG_ERROR, g_LogTag, "SD-EGL-DIAG gl_swap_surface called with null bundle");
+        diagLog(ANDROID_LOG_ERROR, "SD-EGL-DIAG gl_swap_surface called with null bundle");
         return;
     }
-    __android_log_print(ANDROID_LOG_INFO, g_LogTag,
+    diagLog(ANDROID_LOG_INFO,
                         "SD-EGL-DIAG surface transition begin bundle=%p oldSurface=%p oldWindow=%p newWindow=%p",
                         bundle, bundle->surface, bundle->nativeSurface, bundle->newNativeSurface);
     if (bundle->nativeSurface != NULL) {
@@ -141,7 +178,7 @@ void gl_swap_surface(render_window_t* bundle) {
         int width = ANativeWindow_getWidth(bundle->nativeSurface);
         int height = ANativeWindow_getHeight(bundle->nativeSurface);
         int geometry = ANativeWindow_setBuffersGeometry(bundle->nativeSurface, 0, 0, bundle->format);
-        __android_log_print(ANDROID_LOG_INFO, g_LogTag,
+        diagLog(ANDROID_LOG_INFO,
                             "SD-EGL-DIAG creating window surface window=%p size=%dx%d format=%d geometryResult=%d",
                             bundle->nativeSurface, width, height, bundle->format, geometry);
         bundle->surface = eglCreateWindowSurface_p(g_EglDisplay, bundle->config, bundle->nativeSurface, NULL);
@@ -157,10 +194,10 @@ void gl_swap_surface(render_window_t* bundle) {
             logEglFailure("eglCreatePbufferSurface");
             return;
         }
-        __android_log_print(ANDROID_LOG_INFO, g_LogTag,
+        diagLog(ANDROID_LOG_INFO,
                             "SD-EGL-DIAG created 1x1 pbuffer surface=%p", bundle->surface);
     }
-    __android_log_print(ANDROID_LOG_INFO, g_LogTag,
+    diagLog(ANDROID_LOG_INFO,
                         "SD-EGL-DIAG surface transition complete surface=%p window=%p",
                         bundle->surface, bundle->nativeSurface);
 }
@@ -169,7 +206,7 @@ void gl_make_current(render_window_t* bundle) {
     if (bundle == NULL) {
         if (eglMakeCurrent_p(g_EglDisplay, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT)) {
             currentBundle = NULL;
-            __android_log_print(ANDROID_LOG_INFO, g_LogTag, "SD-EGL-DIAG detached current EGL context");
+            diagLog(ANDROID_LOG_INFO, "SD-EGL-DIAG detached current EGL context");
         } else {
             logEglFailure("eglMakeCurrent(detach)");
         }
@@ -180,23 +217,23 @@ void gl_make_current(render_window_t* bundle) {
         pojav_environ->mainWindowBundle = bundle;
         pojav_environ->mainWindowBundle->newNativeSurface = pojav_environ->pojavWindow;
         hasSetMainWindow = true;
-        __android_log_print(ANDROID_LOG_INFO, g_LogTag,
+        diagLog(ANDROID_LOG_INFO,
                             "SD-EGL-DIAG main window bundle=%p nativeWindow=%p",
                             bundle, pojav_environ->pojavWindow);
     }
-    __android_log_print(ANDROID_LOG_INFO, g_LogTag,
+    diagLog(ANDROID_LOG_INFO,
                         "SD-EGL-DIAG makeCurrent begin bundle=%p context=%p surface=%p native=%p",
                         bundle, bundle->context, bundle->surface, bundle->newNativeSurface);
     if (bundle->surface == EGL_NO_SURFACE || bundle->surface == NULL) {
         gl_swap_surface(bundle);
     }
     if (bundle->surface == EGL_NO_SURFACE || bundle->surface == NULL) {
-        __android_log_print(ANDROID_LOG_ERROR, g_LogTag, "SD-EGL-DIAG makeCurrent aborted: no EGL surface");
+        diagLog(ANDROID_LOG_ERROR, "SD-EGL-DIAG makeCurrent aborted: no EGL surface");
         return;
     }
     if (eglMakeCurrent_p(g_EglDisplay, bundle->surface, bundle->surface, bundle->context) == EGL_TRUE) {
         currentBundle = bundle;
-        __android_log_print(ANDROID_LOG_INFO, g_LogTag,
+        diagLog(ANDROID_LOG_INFO,
                             "SD-EGL-DIAG eglMakeCurrent OK bundle=%p surface=%p",
                             bundle, bundle->surface);
     } else {
@@ -212,20 +249,20 @@ void gl_make_current(render_window_t* bundle) {
 void gl_swap_buffers() {
     if (currentBundle == NULL) {
         if (!g_loggedNullSwap) {
-            __android_log_print(ANDROID_LOG_ERROR, g_LogTag,
+            diagLog(ANDROID_LOG_ERROR,
                                 "SD-EGL-DIAG swap requested with no current EGL bundle");
             g_loggedNullSwap = true;
         }
         return;
     }
     if (currentBundle->surface == EGL_NO_SURFACE || currentBundle->surface == NULL) {
-        __android_log_print(ANDROID_LOG_ERROR, g_LogTag,
+        diagLog(ANDROID_LOG_ERROR,
                             "SD-EGL-DIAG swap requested with no EGL surface bundle=%p", currentBundle);
         return;
     }
 
     if (currentBundle->state == STATE_RENDERER_NEW_WINDOW) {
-        __android_log_print(ANDROID_LOG_INFO, g_LogTag,
+        diagLog(ANDROID_LOG_INFO,
                             "SD-EGL-DIAG applying new native window bundle=%p", currentBundle);
         if (eglMakeCurrent_p(g_EglDisplay, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT) != EGL_TRUE) {
             logEglFailure("eglMakeCurrent(detach-for-window-change)");
@@ -233,7 +270,7 @@ void gl_swap_buffers() {
         }
         gl_swap_surface(currentBundle);
         if (currentBundle->surface == EGL_NO_SURFACE || currentBundle->surface == NULL) {
-            __android_log_print(ANDROID_LOG_ERROR, g_LogTag,
+            diagLog(ANDROID_LOG_ERROR,
                                 "SD-EGL-DIAG new window transition produced no surface");
             return;
         }
@@ -243,7 +280,7 @@ void gl_swap_buffers() {
             return;
         }
         currentBundle->state = STATE_RENDERER_ALIVE;
-        __android_log_print(ANDROID_LOG_INFO, g_LogTag,
+        diagLog(ANDROID_LOG_INFO,
                             "SD-EGL-DIAG new window rebound surface=%p", currentBundle->surface);
     }
 
@@ -251,7 +288,7 @@ void gl_swap_buffers() {
     if (swapped == EGL_TRUE) {
         g_swapCount++;
         if (g_swapCount <= 3 || (g_swapCount % 300) == 0) {
-            __android_log_print(ANDROID_LOG_INFO, g_LogTag,
+            diagLog(ANDROID_LOG_INFO,
                                 "SD-EGL-DIAG eglSwapBuffers OK frame=%u surface=%p",
                                 g_swapCount, currentBundle->surface);
         }
@@ -259,7 +296,7 @@ void gl_swap_buffers() {
     }
 
     EGLint error = eglGetError_p();
-    __android_log_print(ANDROID_LOG_ERROR, g_LogTag,
+    diagLog(ANDROID_LOG_ERROR,
                         "SD-EGL-DIAG eglSwapBuffers FAILED frame=%u EGL=0x%04x surface=%p window=%p",
                         g_swapCount + 1, error, currentBundle->surface, currentBundle->nativeSurface);
     if (error == EGL_BAD_SURFACE) {
@@ -270,7 +307,7 @@ void gl_swap_buffers() {
         currentBundle->newNativeSurface = NULL;
         gl_swap_surface(currentBundle);
         if (currentBundle->surface == EGL_NO_SURFACE || currentBundle->surface == NULL) {
-            __android_log_print(ANDROID_LOG_ERROR, g_LogTag,
+            diagLog(ANDROID_LOG_ERROR,
                                 "SD-EGL-DIAG bad-surface recovery could not create pbuffer");
             return;
         }
@@ -279,14 +316,14 @@ void gl_swap_buffers() {
             logEglFailure("eglMakeCurrent(bad-surface-recovery)");
             return;
         }
-        __android_log_print(ANDROID_LOG_INFO, g_LogTag,
+        diagLog(ANDROID_LOG_INFO,
                             "SD-EGL-DIAG bad-surface recovery complete; awaiting window change");
     }
 }
 
 void gl_setup_window() {
     if(pojav_environ->mainWindowBundle != NULL) {
-        __android_log_print(ANDROID_LOG_INFO, g_LogTag, "Main window bundle is not NULL, changing state");
+        diagLog(ANDROID_LOG_INFO, "Main window bundle is not NULL, changing state");
         pojav_environ->mainWindowBundle->state = STATE_RENDERER_NEW_WINDOW;
         pojav_environ->mainWindowBundle->newNativeSurface = pojav_environ->pojavWindow;
     }
@@ -297,7 +334,7 @@ void gl_swap_interval(int swapInterval) {
     if (eglSwapInterval_p(g_EglDisplay, swapInterval) != EGL_TRUE) {
         logEglFailure("eglSwapInterval");
     } else {
-        __android_log_print(ANDROID_LOG_INFO, g_LogTag,
+        diagLog(ANDROID_LOG_INFO,
                             "SD-EGL-DIAG swap interval=%d", swapInterval);
     }
 }
