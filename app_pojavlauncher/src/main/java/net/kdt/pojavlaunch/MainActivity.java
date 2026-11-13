@@ -326,6 +326,14 @@ public class MainActivity extends BaseActivity implements ControlButtonMenuListe
             Tools.LOCAL_RENDERER = "opengles2";
             android.util.Log.i("MainActivity", "Applied low-end preset: scale=" + LauncherPreferences.PREF_SCALE_FACTOR);
         }
+        if (getIntent() != null && getIntent().getBooleanExtra("low_end_preset", false)) {
+            Logger.appendToLog("[SD-EGL-DIAG] Play SD launch config: renderer=" + Tools.LOCAL_RENDERER
+                    + ", scale=" + LauncherPreferences.PREF_SCALE_FACTOR
+                    + ", surface=" + windowWidth + "x" + windowHeight
+                    + ", display=" + (currentDisplayMetrics == null ? "unknown"
+                    : currentDisplayMetrics.widthPixels + "x" + currentDisplayMetrics.heightPixels)
+                    + "\\n");
+        }
         Tools.launchGLJRE(this);
     }
 
