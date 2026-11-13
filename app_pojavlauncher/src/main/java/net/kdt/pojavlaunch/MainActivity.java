@@ -140,6 +140,11 @@ public class MainActivity extends BaseActivity implements ControlButtonMenuListe
             if(!latestLogFile.exists() && !latestLogFile.createNewFile())
                 throw new IOException("Failed to create a new log file");
             Logger.begin(latestLogFile.getAbsolutePath());
+
+            // RT4 launches through ScapeLauncher -> MainActivity, not JavaGUILauncherActivity.
+            // Start the logcat collector here so EGLBridgeDiag/GLBridge messages reach latestlog.txt.
+            Logger.appendToLog("[SD-EGL-DIAG] MainActivity RT4 launch path; starting native diagnostics collector\\n");
+            JREUtils.redirectAndPrintJRELog();
             // FIXME: is it safe for multi thread?
             GLOBAL_CLIPBOARD = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
             touchCharInput.setCharacterSender(new LwjglCharSender());
