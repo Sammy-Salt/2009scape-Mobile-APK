@@ -76,69 +76,51 @@ public class ScapeLauncher extends BaseActivity {
 
 
     /**
-     * Copies the game's latestlog.txt into the public Downloads folder.
-     * MediaStore is used on Android 10+ so this works with scoped storage.
+     * Exports the combined launcher and native EGL diagnostics to a unique
+     * text file in Downloads. Native EGL diagnostics append to latestlog.txt.
      */
     private void exportLatestLog() {
         File source = new File(Tools.DIR_GAME_HOME, "latestlog.txt");
-        if (!source.isFile()) {
-            Toast.makeText(this, "No latestlog.txt file was found yet.", Toast.LENGTH_LONG).show();
+        if (!source.isFile() || !source.canRead()) {
+            Toast.makeText(this, "No readable diagnostic log exists yet. Launch the game first.",
+                    Toast.LENGTH_LONG).show();
             return;
         }
+        if (source.length() == 0) {
+            Toast.makeText(this, "The diagnostic log is empty. Launch the game first.",
+                    Toast.LENGTH_LONG).show();
+            return;
+        }
+
+        String timestamp = new java.text.SimpleDateFormat(
+                "yyyyMMdd-HHmmss", java.util.Locale.US).format(new java.util.Date());
+        String fileName = "2009scape-diagnostics-" + timestamp + ".txt";
 
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 android.content.ContentResolver resolver = getContentResolver();
                 Uri downloads = MediaStore.Downloads.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY);
-                String relativePath = Environment.DIRECTORY_DOWNLOADS + "/";
-                Uri destination = null;
+                ContentValues values = new ContentValues();
+                values.put(MediaStore.MediaColumns.DISPLAY_NAME, fileName);
+                values.put(MediaStore.MediaColumns.MIME_TYPE, "text/plain");
+                values.put(MediaStore.MediaColumns.RELATIVE_PATH,
+                        Environment.DIRECTORY_DOWNLOADS + "/");
+                values.put(MediaStore.MediaColumns.IS_PENDING, 1);
 
-                String selection = MediaStore.MediaColumns.DISPLAY_NAME + "=? AND "
-                        + MediaStore.MediaColumns.RELATIVE_PATH + "=?";
-                String[] selectionArgs = {"latestlog.txt", relativePath};
-                try (Cursor cursor = resolver.query(downloads,
-                        new String[]{MediaStore.MediaColumns._ID},
-                        selection, selectionArgs, null)) {
-                    if (cursor != null && cursor.moveToFirst()) {
-                        destination = ContentUris.withAppendedId(
-                                downloads, cursor.getLong(0));
-                    }
-                }
-
-                boolean created = false;
+                Uri destination = resolver.insert(downloads, values);
                 if (destination == null) {
-                    ContentValues values = new ContentValues();
-                    values.put(MediaStore.MediaColumns.DISPLAY_NAME, "latestlog.txt");
-                    values.put(MediaStore.MediaColumns.MIME_TYPE, "text/plain");
-                    values.put(MediaStore.MediaColumns.RELATIVE_PATH, relativePath);
-                    values.put(MediaStore.MediaColumns.IS_PENDING, 1);
-                    destination = resolver.insert(downloads, values);
-                    if (destination == null) {
-                        throw new IOException("Android could not create the Downloads file");
-                    }
-                    created = true;
+                    throw new IOException("Android could not create the Downloads file");
                 }
-
-                try (InputStream input = new FileInputStream(source);
-                     OutputStream output = resolver.openOutputStream(destination, "wt")) {
-                    if (output == null) {
-                        throw new IOException("Android could not open the Downloads file");
-                    }
-                    byte[] buffer = new byte[8192];
-                    int count;
-                    while ((count = input.read(buffer)) != -1) {
-                        output.write(buffer, 0, count);
-                    }
-                    output.flush();
-                } catch (IOException e) {
-                    if (created) resolver.delete(destination, null, null);
-                    throw e;
-                }
-
-                if (created) {
+                try {
+                    copyDiagnosticLog(source, resolver.openOutputStream(destination, "w"));
                     ContentValues ready = new ContentValues();
                     ready.put(MediaStore.MediaColumns.IS_PENDING, 0);
-                    resolver.update(destination, ready, null, null);
+                    if (resolver.update(destination, ready, null, null) != 1) {
+                        throw new IOException("Android could not finalize the Downloads file");
+                    }
+                } catch (Exception e) {
+                    resolver.delete(destination, null, null);
+                    throw e;
                 }
             } else {
                 File downloads = Environment.getExternalStoragePublicDirectory(
@@ -146,25 +128,32 @@ public class ScapeLauncher extends BaseActivity {
                 if (!downloads.isDirectory() && !downloads.mkdirs()) {
                     throw new IOException("Could not create the Downloads folder");
                 }
-                File destination = new File(downloads, "latestlog.txt");
-                try (InputStream input = new FileInputStream(source);
-                     OutputStream output = new FileOutputStream(destination, false)) {
-                    byte[] buffer = new byte[8192];
-                    int count;
-                    while ((count = input.read(buffer)) != -1) {
-                        output.write(buffer, 0, count);
-                    }
-                    output.flush();
-                }
+                copyDiagnosticLog(source, new FileOutputStream(new File(downloads, fileName), false));
             }
 
-            Toast.makeText(this,
-                    "Exported latestlog.txt to Internal storage/Download",
+            Toast.makeText(this, "Exported " + fileName + " to Downloads",
                     Toast.LENGTH_LONG).show();
+            Log.i("ScapeLauncher", "Exported diagnostic log: " + fileName
+                    + " (" + source.length() + " bytes)");
         } catch (Exception e) {
-            Log.e("ScapeLauncher", "Failed to export latestlog.txt", e);
+            Log.e("ScapeLauncher", "Failed to export diagnostic log", e);
             String detail = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
             Toast.makeText(this, "Log export failed: " + detail, Toast.LENGTH_LONG).show();
+        }
+    }
+
+    private static void copyDiagnosticLog(File source, OutputStream output) throws IOException {
+        if (output == null) {
+            throw new IOException("Android could not open the Downloads file");
+        }
+        try (InputStream input = new FileInputStream(source);
+             OutputStream destination = output) {
+            byte[] buffer = new byte[8192];
+            int count;
+            while ((count = input.read(buffer)) != -1) {
+                destination.write(buffer, 0, count);
+            }
+            destination.flush();
         }
     }
 

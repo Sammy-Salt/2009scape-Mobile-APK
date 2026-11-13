@@ -149,12 +149,20 @@ public class JREUtils {
             public void run() {
                 try {
                     if (logcatPb == null) {
-                        logcatPb = new ProcessBuilder().command("logcat", /* "-G", "1mb", */ "-v", "brief", "-s", "jrelog:I", "LIBGL:I", "NativeInput").redirectErrorStream(true);
+                        logcatPb = new ProcessBuilder().command("logcat", /* "-G", "1mb", */ "-v", "brief", "-s", "jrelog:I", "LIBGL:I", "NativeInput", "GLBridge:I", "EGLBridge:I").redirectErrorStream(true);
                     }
 
                     Log.i("jrelog-logcat","Clearing logcat");
-                    new ProcessBuilder().command("logcat", "-c").redirectErrorStream(true).start();
-                    Log.i("jrelog-logcat","Starting logcat");
+                    java.lang.Process clearProcess = new ProcessBuilder()
+                            .command("logcat", "-c")
+                            .redirectErrorStream(true)
+                            .start();
+                    // Finish clearing before opening the reader, otherwise the clear can race
+                    // the reader and discard the first EGL messages.
+                    int clearExitCode = clearProcess.waitFor();
+                    Logger.appendToLog("[SD-EGL-DIAG] logcat clear exit=" + clearExitCode
+                            + "; collector build=c7f01a24+native-file-log\n");
+                    Log.i("jrelog-logcat","Starting logcat; clear exit=" + clearExitCode);
                     java.lang.Process p = logcatPb.start();
 
                     byte[] buf = new byte[1024];
