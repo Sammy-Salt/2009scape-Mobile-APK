@@ -322,10 +322,19 @@ void gl_swap_buffers() {
 }
 
 void gl_setup_window() {
+    diagLog(ANDROID_LOG_INFO,
+            "SD-EGL-DIAG gl_setup_window window=%p size=%dx%d bundle=%p",
+            pojav_environ->pojavWindow,
+            pojav_environ->pojavWindow ? ANativeWindow_getWidth(pojav_environ->pojavWindow) : 0,
+            pojav_environ->pojavWindow ? ANativeWindow_getHeight(pojav_environ->pojavWindow) : 0,
+            pojav_environ->mainWindowBundle);
     if(pojav_environ->mainWindowBundle != NULL) {
-        diagLog(ANDROID_LOG_INFO, "Main window bundle is not NULL, changing state");
+        diagLog(ANDROID_LOG_INFO, "SD-EGL-DIAG scheduling renderer window transition");
         pojav_environ->mainWindowBundle->state = STATE_RENDERER_NEW_WINDOW;
         pojav_environ->mainWindowBundle->newNativeSurface = pojav_environ->pojavWindow;
+    } else {
+        diagLog(ANDROID_LOG_INFO,
+                "SD-EGL-DIAG no main window bundle yet; initial window will be attached by gl_make_current");
     }
 }
 
