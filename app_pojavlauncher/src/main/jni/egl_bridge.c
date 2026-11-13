@@ -773,7 +773,16 @@ bool loadSymbolsVirGL() {
 
 int pojavInit() {
     const char* initialRenderer = getenv("POJAV_RENDERER");
-    eglDiagLog(ANDROID_LOG_INFO, "pojavInit begin renderer=%s configRenderer=%d window=%p HOME=%s", initialRenderer == NULL ? "(null)" : initialRenderer, pojav_environ->config_renderer, pojav_environ->pojavWindow, getenv("HOME") == NULL ? "(null)" : getenv("HOME"));
+    if (pojav_environ == NULL) {
+        eglDiagLog(ANDROID_LOG_ERROR, "pojavInit entered but pojav_environ is NULL; renderer=%s HOME=%s",
+                initialRenderer == NULL ? "(null)" : initialRenderer,
+                getenv("HOME") == NULL ? "(null)" : getenv("HOME"));
+        return 0;
+    }
+    eglDiagLog(ANDROID_LOG_INFO, "pojavInit begin renderer=%s configRenderer=%d window=%p HOME=%s",
+            initialRenderer == NULL ? "(null)" : initialRenderer,
+            pojav_environ->config_renderer, pojav_environ->pojavWindow,
+            getenv("HOME") == NULL ? "(null)" : getenv("HOME"));
     if (pojav_environ->pojavWindow == NULL) {
         eglDiagLog(ANDROID_LOG_ERROR, "pojavInit aborted: native window is NULL");
         printf("EGLBridge: pojavInit called with null pojavWindow (no surface). Aborting.\n");
@@ -787,11 +796,15 @@ int pojavInit() {
 
     // Only affects GL4ES as of now
     const char *forceVsync = getenv("FORCE_VSYNC");
-    if (strcmp(forceVsync, "true") == 0)
+    if (forceVsync != NULL && strcmp(forceVsync, "true") == 0)
         pojav_environ->force_vsync = true;
 
     // NOTE: Override for now.
     const char *renderer = getenv("POJAV_RENDERER");
+    if (renderer == NULL) {
+        eglDiagLog(ANDROID_LOG_ERROR, "pojavInit aborted: POJAV_RENDERER is unset");
+        return 0;
+    }
     if (strncmp("opengles3_virgl", renderer, 15) == 0) {
         pojav_environ->config_renderer = RENDERER_VIRGL;
         setenv("GALLIUM_DRIVER","virpipe",1);
