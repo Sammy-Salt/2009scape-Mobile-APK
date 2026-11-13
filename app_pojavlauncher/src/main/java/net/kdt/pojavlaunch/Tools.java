@@ -164,8 +164,8 @@ public final class Tools {
         List<String> javaArgList = new ArrayList<>();
         javaArgList.add("-Dorg.lwjgl.util.NoChecks=true");
 
-        // The RT4 client otherwise restores the saved HD mode when Play SD is selected.
-        // Tell DisplayMode to keep this launch on its software SD path.
+        // Keep the Play-SD launch marker; the packaged RT4 patch prevents it from
+        // suppressing OpenGL initialization, without changing the Play-HD launch path.
         if (activity.getIntent() != null && activity.getIntent().getBooleanExtra("low_end_preset", false)) {
             javaArgList.add("-DlaunchSD=true");
         }
