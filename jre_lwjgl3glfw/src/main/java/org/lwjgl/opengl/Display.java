@@ -853,8 +853,14 @@ public class Display {
     }
 
     public static void setDisplayMode(DisplayMode dm) throws LWJGLException {
+        System.err.println("[SD-DISPLAY-DIAG] setDisplayMode requested=" + dm.getWidth() + "x" + dm.getHeight()
+                + " created=" + isCreated + " handle=" + Window.handle
+                + " previous=" + (mode == null ? "null" : mode.getWidth() + "x" + mode.getHeight()));
         mode = dm;
-        if(isCreated) GLFW.glfwSetWindowSize(Window.handle, dm.getWidth(), dm.getHeight());
+        if(isCreated) {
+            GLFW.glfwSetWindowSize(Window.handle, dm.getWidth(), dm.getHeight());
+            System.err.println("[SD-DISPLAY-DIAG] glfwSetWindowSize applied");
+        }
     }
 
     public static DisplayMode getDisplayMode() {
