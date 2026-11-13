@@ -765,18 +765,31 @@ public final class Tools {
         MAIN_HANDLER.post(runnable);
     }
 
-    /** Triggers the share intent chooser, with the latestlog file attached to it */
+    /** Share the current launcher log as text, avoiding a document URI the receiver cannot resolve. */
     public static void shareLog(Context context){
-        Uri contentUri = DocumentsContract.buildDocumentUri(context.getString(R.string.storageProviderAuthorities), Tools.DIR_GAME_HOME + "/latestlog.txt");
+        File latestLogFile = new File(Tools.DIR_GAME_HOME, "latestlog.txt");
+        if (!latestLogFile.isFile() || !latestLogFile.canRead()) {
+            Toast.makeText(context, "latestlog.txt is missing or unreadable", Toast.LENGTH_LONG).show();
+            Log.e("ShareLogs", "Log file unavailable: " + latestLogFile.getAbsolutePath());
+            return;
+        }
 
-        Intent shareIntent = new Intent();
-        shareIntent.setAction(Intent.ACTION_SEND);
-        shareIntent.putExtra(Intent.EXTRA_STREAM, contentUri);
-        shareIntent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
-        shareIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-        shareIntent.setType("text/plain");
+        try {
+            String logText = Tools.read(latestLogFile.getAbsolutePath());
+            if (logText.isEmpty()) {
+                Toast.makeText(context, "latestlog.txt is empty; launch the game first", Toast.LENGTH_LONG).show();
+                return;
+            }
 
-        Intent sendIntent = Intent.createChooser(shareIntent, "latestlog.txt");
-        context.startActivity(sendIntent);
+            Intent shareIntent = new Intent(Intent.ACTION_SEND);
+            shareIntent.setType("text/plain");
+            shareIntent.putExtra(Intent.EXTRA_SUBJECT, "2009Scape mobile diagnostic log");
+            shareIntent.putExtra(Intent.EXTRA_TEXT, logText);
+            context.startActivity(Intent.createChooser(shareIntent, "Share diagnostic log"));
+        } catch (IOException | android.content.ActivityNotFoundException e) {
+            Log.e("ShareLogs", "Unable to share latestlog.txt", e);
+            Toast.makeText(context, "Unable to read or share latestlog.txt: " + e.getMessage(),
+                    Toast.LENGTH_LONG).show();
+        }
     }
 }
