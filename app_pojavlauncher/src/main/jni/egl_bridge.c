@@ -10,6 +10,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <stdarg.h>
+#include <errno.h>
 #include <android/log.h>
 
 #include <EGL/egl.h>
