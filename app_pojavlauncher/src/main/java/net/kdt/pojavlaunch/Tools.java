@@ -14,6 +14,7 @@ import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.ProgressDialog;
 import android.content.ClipData;
+import android.content.ContentValues;
 import android.content.ClipboardManager;
 import android.content.Context;
 import android.content.Intent;
@@ -25,6 +26,7 @@ import android.os.Environment;
 import android.os.Handler;
 import android.os.Looper;
 import android.provider.DocumentsContract;
+import android.provider.MediaStore;
 import android.provider.OpenableColumns;
 import android.util.DisplayMetrics;
 import android.util.Log;
@@ -765,7 +767,7 @@ public final class Tools {
         MAIN_HANDLER.post(runnable);
     }
 
-    /** Share the current launcher log as text, avoiding a document URI the receiver cannot resolve. */
+    /** Save the current diagnostic log directly into the public Downloads folder. */
     public static void shareLog(Context context){
         File latestLogFile = new File(Tools.DIR_GAME_HOME, "latestlog.txt");
         if (!latestLogFile.isFile() || !latestLogFile.canRead()) {
@@ -774,22 +776,62 @@ public final class Tools {
             return;
         }
 
-        try {
-            String logText = Tools.read(latestLogFile.getAbsolutePath());
-            if (logText.isEmpty()) {
-                Toast.makeText(context, "latestlog.txt is empty; launch the game first", Toast.LENGTH_LONG).show();
-                return;
-            }
+        String fileName = "2009scape-latestlog-" + System.currentTimeMillis() + ".txt";
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            Uri destinationUri = null;
+            try {
+                ContentValues values = new ContentValues();
+                values.put(MediaStore.MediaColumns.DISPLAY_NAME, fileName);
+                values.put(MediaStore.MediaColumns.MIME_TYPE, "text/plain");
+                values.put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS);
+                values.put(MediaStore.MediaColumns.IS_PENDING, 1);
 
-            Intent shareIntent = new Intent(Intent.ACTION_SEND);
-            shareIntent.setType("text/plain");
-            shareIntent.putExtra(Intent.EXTRA_SUBJECT, "2009Scape mobile diagnostic log");
-            shareIntent.putExtra(Intent.EXTRA_TEXT, logText);
-            context.startActivity(Intent.createChooser(shareIntent, "Share diagnostic log"));
-        } catch (IOException | android.content.ActivityNotFoundException e) {
-            Log.e("ShareLogs", "Unable to share latestlog.txt", e);
-            Toast.makeText(context, "Unable to read or share latestlog.txt: " + e.getMessage(),
+                destinationUri = context.getContentResolver().insert(
+                        MediaStore.Downloads.EXTERNAL_CONTENT_URI, values);
+                if (destinationUri == null) {
+                    throw new IOException("Android could not create the Downloads file");
+                }
+
+                try (InputStream input = new FileInputStream(latestLogFile);
+                     OutputStream output = context.getContentResolver().openOutputStream(destinationUri, "w")) {
+                    if (output == null) throw new IOException("Could not open the Downloads file");
+                    IOUtils.copy(input, output);
+                    output.flush();
+                }
+
+                ContentValues completed = new ContentValues();
+                completed.put(MediaStore.MediaColumns.IS_PENDING, 0);
+                context.getContentResolver().update(destinationUri, completed, null, null);
+                Toast.makeText(context, "Diagnostic log saved to Downloads/" + fileName,
+                        Toast.LENGTH_LONG).show();
+                Log.i("ShareLogs", "Saved " + latestLogFile.length() + " bytes to Downloads/" + fileName);
+            } catch (Exception e) {
+                if (destinationUri != null) {
+                    try { context.getContentResolver().delete(destinationUri, null, null); }
+                    catch (Exception ignored) { }
+                }
+                Log.e("ShareLogs", "Unable to save latestlog.txt to Downloads", e);
+                Toast.makeText(context, "Could not save log: " + e.getMessage(), Toast.LENGTH_LONG).show();
+            }
+            return;
+        }
+
+        // Legacy external storage path for Android 9 and earlier.
+        try {
+            File downloads = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
+            if (!downloads.exists() && !downloads.mkdirs()) {
+                throw new IOException("Could not create the Downloads folder");
+            }
+            File destination = new File(downloads, fileName);
+            try (InputStream input = new FileInputStream(latestLogFile);
+                 OutputStream output = new FileOutputStream(destination)) {
+                IOUtils.copy(input, output);
+            }
+            Toast.makeText(context, "Diagnostic log saved to Downloads/" + fileName,
                     Toast.LENGTH_LONG).show();
+        } catch (Exception e) {
+            Log.e("ShareLogs", "Unable to save latestlog.txt to Downloads", e);
+            Toast.makeText(context, "Could not save log: " + e.getMessage(), Toast.LENGTH_LONG).show();
         }
     }
 }
