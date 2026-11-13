@@ -8,6 +8,10 @@
 #include <stdlib.h>
 #include <sys/types.h>
 #include <unistd.h>
+#include <fcntl.h>
+#include <stdarg.h>
+#include <errno.h>
+#include <android/log.h>
 
 #include <EGL/egl.h>
 #include <GL/osmesa.h>
@@ -606,6 +610,37 @@ void bigcore_set_affinity();
 
 void* gbuffer;
 
+/* Persist EGL lifecycle diagnostics independently of redirected stdout/logcat. */
+static void eglDiagLog(int priority, const char* format, ...) {
+    char message[768];
+    va_list args;
+    va_start(args, format);
+    va_list logArgs;
+    va_copy(logArgs, args);
+    __android_log_vprint(priority, "EGLBridgeDiag", format, logArgs);
+    va_end(logArgs);
+    int length = vsnprintf(message, sizeof(message), format, args);
+    va_end(args);
+    if (length < 0) return;
+    size_t used = (size_t) length;
+    if (used >= sizeof(message)) used = sizeof(message) - 1;
+    const char* home = getenv("HOME");
+    if (home == NULL || home[0] == '\0') return;
+    char path[4096];
+    int pathLength = snprintf(path, sizeof(path), "%s/latestlog.txt", home);
+    if (pathLength < 0 || (size_t) pathLength >= sizeof(path)) return;
+    int fd = open(path, O_WRONLY | O_CREAT | O_APPEND, 0600);
+    if (fd < 0) {
+        __android_log_print(ANDROID_LOG_ERROR, "EGLBridgeDiag",
+                "Could not open diagnostic log %s: errno=%d", path, errno);
+        return;
+    }
+    char line[800];
+    int lineLength = snprintf(line, sizeof(line), "[EGL-DIAG] %.*s\n", (int) used, message);
+    if (lineLength > 0 && (size_t) lineLength < sizeof(line)) (void) write(fd, line, (size_t) lineLength);
+    close(fd);
+}
+
 void* egl_make_current(void* window);
 
 void pojav_openGLOnLoad() {
@@ -615,6 +650,7 @@ void pojav_openGLOnUnload() {
 }
 
 void pojavTerminate() {
+    eglDiagLog(ANDROID_LOG_INFO, "pojavTerminate renderer=%d display=%p surface=%p context=%p", pojav_environ->config_renderer, potatoBridge.eglDisplay, potatoBridge.eglSurface, potatoBridge.eglContext);
     printf("EGLBridge: Terminating\n");
 
     switch (pojav_environ->config_renderer) {
@@ -638,16 +674,24 @@ void pojavTerminate() {
 }
 
 JNIEXPORT void JNICALL Java_net_kdt_pojavlaunch_utils_JREUtils_setupBridgeWindow(JNIEnv* env, jclass clazz, jobject surface) {
+    eglDiagLog(ANDROID_LOG_INFO, "setupBridgeWindow begin javaSurface=%p renderer=%d", surface, pojav_environ->config_renderer);
     pojav_environ->pojavWindow = ANativeWindow_fromSurface(env, surface);
-    if(pojav_environ->config_renderer == RENDERER_GL4ES) {
-        gl_setup_window();
+    if (pojav_environ->pojavWindow != NULL) {
+        eglDiagLog(ANDROID_LOG_INFO, "setupBridgeWindow nativeWindow=%p size=%dx%d", pojav_environ->pojavWindow, ANativeWindow_getWidth(pojav_environ->pojavWindow), ANativeWindow_getHeight(pojav_environ->pojavWindow));
+    } else {
+        eglDiagLog(ANDROID_LOG_ERROR, "setupBridgeWindow ANativeWindow_fromSurface returned NULL");
     }
+    if(pojav_environ->config_renderer == RENDERER_GL4ES) gl_setup_window();
 }
 
 
 JNIEXPORT void JNICALL
 Java_net_kdt_pojavlaunch_utils_JREUtils_releaseBridgeWindow(JNIEnv *env, jclass clazz) {
-    ANativeWindow_release(pojav_environ->pojavWindow);
+    eglDiagLog(ANDROID_LOG_INFO, "releaseBridgeWindow nativeWindow=%p", pojav_environ->pojavWindow);
+    if (pojav_environ->pojavWindow != NULL) {
+        ANativeWindow_release(pojav_environ->pojavWindow);
+        pojav_environ->pojavWindow = NULL;
+    }
 }
 
 void* pojavGetCurrentContext() {
@@ -728,14 +772,18 @@ bool loadSymbolsVirGL() {
 }
 
 int pojavInit() {
+    const char* initialRenderer = getenv("POJAV_RENDERER");
+    eglDiagLog(ANDROID_LOG_INFO, "pojavInit begin renderer=%s configRenderer=%d window=%p HOME=%s", initialRenderer == NULL ? "(null)" : initialRenderer, pojav_environ->config_renderer, pojav_environ->pojavWindow, getenv("HOME") == NULL ? "(null)" : getenv("HOME"));
     if (pojav_environ->pojavWindow == NULL) {
+        eglDiagLog(ANDROID_LOG_ERROR, "pojavInit aborted: native window is NULL");
         printf("EGLBridge: pojavInit called with null pojavWindow (no surface). Aborting.\n");
         return 0;
     }
     ANativeWindow_acquire(pojav_environ->pojavWindow);
     pojav_environ->savedWidth = ANativeWindow_getWidth(pojav_environ->pojavWindow);
     pojav_environ->savedHeight = ANativeWindow_getHeight(pojav_environ->pojavWindow);
-    ANativeWindow_setBuffersGeometry(pojav_environ->pojavWindow,pojav_environ->savedWidth,pojav_environ->savedHeight,AHARDWAREBUFFER_FORMAT_R8G8B8X8_UNORM);
+    int initialGeometry = ANativeWindow_setBuffersGeometry(pojav_environ->pojavWindow, pojav_environ->savedWidth, pojav_environ->savedHeight, AHARDWAREBUFFER_FORMAT_R8G8B8X8_UNORM);
+    eglDiagLog(ANDROID_LOG_INFO, "pojavInit window geometry size=%dx%d format=%d result=%d", pojav_environ->savedWidth, pojav_environ->savedHeight, AHARDWAREBUFFER_FORMAT_R8G8B8X8_UNORM, initialGeometry);
 
     // Only affects GL4ES as of now
     const char *forceVsync = getenv("FORCE_VSYNC");
@@ -761,10 +809,14 @@ int pojavInit() {
         loadSymbols();
     }
     if(pojav_environ->config_renderer == RENDERER_GL4ES) {
+        eglDiagLog(ANDROID_LOG_INFO, "GL4ES path: calling gl_init display setup");
         if(gl_init()) {
+            eglDiagLog(ANDROID_LOG_INFO, "GL4ES path: gl_init succeeded; scheduling native window=%p", pojav_environ->pojavWindow);
             gl_setup_window(pojav_environ->pojavWindow);
+            eglDiagLog(ANDROID_LOG_INFO, "GL4ES path: pojavInit completed successfully");
             return 1;
         }
+        eglDiagLog(ANDROID_LOG_ERROR, "GL4ES path: gl_init failed; EGL error=0x%04x", eglGetError_p == NULL ? 0 : eglGetError_p());
         return 0;
     }
     if (pojav_environ->config_renderer == RENDERER_VIRGL) {
