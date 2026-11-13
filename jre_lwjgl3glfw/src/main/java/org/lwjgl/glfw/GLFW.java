@@ -803,23 +803,23 @@ public class GLFW
 
     static boolean isGLFWReady;
     public static boolean glfwInit() {
-        Log.i("EGLBridgeDiag", "SD-EGL-DIAG Java GLFW.glfwInit enter ready=" + isGLFWReady);
+        System.out.println("SD-EGL-DIAG Java GLFW.glfwInit enter ready=" + isGLFWReady);
         if (!isGLFWReady) {
             //CallbackBridge.nativeAttachThreadToOther(false, false);
             mGLFWInitialTime = (double) System.nanoTime();
             long __functionAddress = Functions.Init;
-            Log.i("EGLBridgeDiag", "SD-EGL-DIAG Java GLFW.glfwInit nativeFunction=0x" + Long.toHexString(__functionAddress));
+            System.out.println("SD-EGL-DIAG Java GLFW.glfwInit nativeFunction=0x" + Long.toHexString(__functionAddress));
             if (__functionAddress == 0L) {
-                Log.e("EGLBridgeDiag", "SD-EGL-DIAG Java GLFW.glfwInit aborted: pojavInit symbol address is zero");
+                System.err.println("SD-EGL-DIAG Java GLFW.glfwInit aborted: pojavInit symbol address is zero");
                 return false;
             }
             int nativeInitResult = invokeI(__functionAddress);
-            Log.i("EGLBridgeDiag", "SD-EGL-DIAG Java GLFW.glfwInit nativeResult=" + nativeInitResult);
+            System.out.println("SD-EGL-DIAG Java GLFW.glfwInit nativeResult=" + nativeInitResult);
             isGLFWReady = nativeInitResult != 0;
         } else {
-            Log.i("EGLBridgeDiag", "SD-EGL-DIAG Java GLFW.glfwInit skipped native call: already initialized");
+            System.out.println("SD-EGL-DIAG Java GLFW.glfwInit skipped native call: already initialized");
         }
-        Log.i("EGLBridgeDiag", "SD-EGL-DIAG Java GLFW.glfwInit exit ready=" + isGLFWReady);
+        System.out.println("SD-EGL-DIAG Java GLFW.glfwInit exit ready=" + isGLFWReady);
         return isGLFWReady;
     }
 
