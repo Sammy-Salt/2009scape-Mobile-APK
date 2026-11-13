@@ -803,12 +803,19 @@ public class GLFW
 
     static boolean isGLFWReady;
     public static boolean glfwInit() {
+        Log.i("EGLBridgeDiag", "SD-GLFW-DIAG glfwInit enter ready=" + isGLFWReady
+                + " InitPtr=0x" + Long.toHexString(Functions.Init));
         if (!isGLFWReady) {
             //CallbackBridge.nativeAttachThreadToOther(false, false);
             mGLFWInitialTime = (double) System.nanoTime();
             long __functionAddress = Functions.Init;
-            isGLFWReady = invokeI(__functionAddress) != 0;
+            Log.i("EGLBridgeDiag", "SD-GLFW-DIAG invoking pojavInit ptr=0x"
+                    + Long.toHexString(__functionAddress));
+            int initResult = invokeI(__functionAddress);
+            Log.i("EGLBridgeDiag", "SD-GLFW-DIAG pojavInit returned=" + initResult);
+            isGLFWReady = initResult != 0;
         }
+        Log.i("EGLBridgeDiag", "SD-GLFW-DIAG glfwInit exit ready=" + isGLFWReady);
         return isGLFWReady;
     }
 
@@ -978,8 +985,13 @@ public class GLFW
     }
     public static long glfwCreateWindow(int width, int height, CharSequence title, long monitor, long share) {
         EventLoop.OffScreen.check();
+        Log.i("EGLBridgeDiag", "SD-GLFW-DIAG glfwCreateWindow enter requested="
+                + width + "x" + height + " share=0x" + Long.toHexString(share)
+                + " CreateContextPtr=0x" + Long.toHexString(Functions.CreateContext));
         // Create an ACTUAL EGL context
         long ptr = nglfwCreateContext(share);
+        Log.i("EGLBridgeDiag", "SD-GLFW-DIAG glfwCreateWindow native context=0x"
+                + Long.toHexString(ptr));
         //nativeEglMakeCurrent(ptr);
         GLFWWindowProperties win = new GLFWWindowProperties();
         // win.width = width;
