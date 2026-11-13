@@ -7,6 +7,8 @@ import android.util.*;
 import android.view.*;
 
 import java.util.*;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 
 import net.kdt.pojavlaunch.Tools;
 import net.kdt.pojavlaunch.utils.*;
@@ -17,6 +19,10 @@ public class AWTCanvasView extends TextureView implements TextureView.SurfaceTex
     private static final double NANOS = 1000000000.0;
     private boolean mIsDestroyed = false;
     private final LinkedList<Long> mTimes = new LinkedList<Long>(){{add(System.nanoTime());}};
+
+    // The Java runtime must not start until its Android window is registered with the native EGL bridge.
+    private final CountDownLatch mBridgeWindowReady = new CountDownLatch(1);
+    private volatile Throwable mBridgeWindowError;
 
     public AWTCanvasView(Context ctx) {
         this(ctx, null);
@@ -32,7 +38,31 @@ public class AWTCanvasView extends TextureView implements TextureView.SurfaceTex
     public void onSurfaceTextureAvailable(SurfaceTexture texture, int w, int h) {
         getSurfaceTexture().setDefaultBufferSize(AWT_CANVAS_WIDTH, AWT_CANVAS_HEIGHT);
         mIsDestroyed = false;
+
+        // Match the GLFW surface path: register the Surface before the JVM can call pojavInit().
+        Surface bridgeSurface = new Surface(texture);
+        try {
+            JREUtils.setupBridgeWindow(bridgeSurface);
+            Log.i("AWTCanvasView", "Native bridge window initialized");
+        } catch (Throwable throwable) {
+            mBridgeWindowError = throwable;
+            Log.e("AWTCanvasView", "Failed to initialize native bridge window", throwable);
+        } finally {
+            bridgeSurface.release();
+            mBridgeWindowReady.countDown();
+        }
+
         new Thread(this, "AndroidAWTRenderer").start();
+    }
+
+    /** Wait until the native renderer has a valid Android window to acquire. */
+    public void awaitBridgeWindowReady() throws InterruptedException {
+        if (!mBridgeWindowReady.await(30, TimeUnit.SECONDS)) {
+            throw new IllegalStateException("Timed out waiting for the Android rendering surface");
+        }
+        if (mBridgeWindowError != null) {
+            throw new IllegalStateException("Native EGL bridge window initialization failed", mBridgeWindowError);
+        }
     }
 
     @Override

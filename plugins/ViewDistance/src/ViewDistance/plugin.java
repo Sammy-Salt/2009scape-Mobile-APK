@@ -50,6 +50,7 @@ public class plugin extends Plugin {
 
     @Override
     public void Draw(long elapsed) {
+        if (!API.IsHD()) return;
         if (!fogNeedsRefresh) return;
         reissueFog();
         fogNeedsRefresh = false;

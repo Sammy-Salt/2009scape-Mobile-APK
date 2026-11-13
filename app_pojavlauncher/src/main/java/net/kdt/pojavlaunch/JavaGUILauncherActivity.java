@@ -31,6 +31,7 @@ import net.kdt.pojavlaunch.multirt.Runtime;
 import net.kdt.pojavlaunch.prefs.LauncherPreferences;
 import net.kdt.pojavlaunch.utils.JREUtils;
 import net.kdt.pojavlaunch.utils.KeyEncoder;
+import net.kdt.pojavlaunch.utils.LwjglGlfwKeycode;
 import net.kdt.pojavlaunch.utils.MathUtils;
 
 import org.lwjgl.glfw.CallbackBridge;
@@ -77,7 +78,7 @@ public class JavaGUILauncherActivity extends BaseActivity implements View.OnTouc
             Log.e("JavaGUILauncher", "Failed to create log file", e);
         }
 
-        mTextureView = findViewById(R.id.install_texture_view);
+        mTextureView = findViewById(R.id.installmod_surfaceview);
         mLoggerView = findViewById(R.id.launcherLoggerView);
         mTouchCharInput = findViewById(R.id.awt_touch_char);
         mTouchCharInput.setCharacterSender(new AwtCharSender());
@@ -94,8 +95,8 @@ public class JavaGUILauncherActivity extends BaseActivity implements View.OnTouc
                 if (System.currentTimeMillis() - lastPress < 500) return;
                 lastPress = System.currentTimeMillis();
                 // Right click
-                CallbackBridge.sendMouseButton(CallbackBridge.MOUSE_RIGHT, true);
-                CallbackBridge.sendMouseButton(CallbackBridge.MOUSE_RIGHT, false);
+                CallbackBridge.sendMouseButton(LwjglGlfwKeycode.GLFW_MOUSE_BUTTON_RIGHT, true);
+                CallbackBridge.sendMouseButton(LwjglGlfwKeycode.GLFW_MOUSE_BUTTON_RIGHT, false);
             }
         });
 
@@ -112,7 +113,7 @@ public class JavaGUILauncherActivity extends BaseActivity implements View.OnTouc
         mTouchPad.setOnTouchListener(touchListener);
 
         findViewById(R.id.mouseModeIco).setOnClickListener(v -> toggleVirtualMouse());
-        findViewById(R.id.keyboardToggle).setOnClickListener(this::toggleKeyboard);
+        findViewById(R.id.keyboard).setOnClickListener(this::toggleKeyboard);
         findViewById(R.id.openLogOutput).setOnClickListener(this::openLogOutput);
 
         getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
@@ -122,9 +123,11 @@ public class JavaGUILauncherActivity extends BaseActivity implements View.OnTouc
             }
         });
 
-        // Launch runtime
+        // Launch runtime only after the Android Surface has been attached to the native EGL bridge.
         new Thread(() -> {
             try {
+                mTextureView.awaitBridgeWindowReady();
+                Log.i("JavaGUILauncher", "Native bridge window is ready; starting Java runtime");
                 Runtime runtime = MultiRTUtils.forceReread("Internal");
                 int code = launchJavaRuntime(runtime, null);
                 Log.i("JavaGUILauncher", "launchJavaRuntime returned " + code);
@@ -167,7 +170,7 @@ public class JavaGUILauncherActivity extends BaseActivity implements View.OnTouc
 
         switch (e.getActionMasked()) {
             case MotionEvent.ACTION_DOWN:
-                CallbackBridge.sendMouseButton(CallbackBridge.MOUSE_LEFT, true);
+                CallbackBridge.sendMouseButton(LwjglGlfwKeycode.GLFW_MOUSE_BUTTON_LEFT, true);
                 CallbackBridge.sendCursorPos(awtX, awtY);
                 break;
             case MotionEvent.ACTION_MOVE:
@@ -175,7 +178,7 @@ public class JavaGUILauncherActivity extends BaseActivity implements View.OnTouc
                 break;
             case MotionEvent.ACTION_UP:
             case MotionEvent.ACTION_CANCEL:
-                CallbackBridge.sendMouseButton(CallbackBridge.MOUSE_LEFT, false);
+                CallbackBridge.sendMouseButton(LwjglGlfwKeycode.GLFW_MOUSE_BUTTON_LEFT, false);
                 break;
         }
         return true;

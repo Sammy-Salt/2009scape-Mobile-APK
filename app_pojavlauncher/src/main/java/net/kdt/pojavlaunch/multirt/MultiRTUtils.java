@@ -8,6 +8,7 @@ import android.util.Log;
 
 import com.kdt.mcgui.ProgressLayout;
 
+import net.kdt.pojavlaunch.Logger;
 import net.kdt.pojavlaunch.R;
 import net.kdt.pojavlaunch.Tools;
 import net.kdt.pojavlaunch.utils.JREUtils;
@@ -26,6 +27,7 @@ import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 
 public class MultiRTUtils {
@@ -87,19 +89,101 @@ public class MultiRTUtils {
     }
 
     public static void postPrepare(String name) throws IOException {
-        File dest = new File(RUNTIME_FOLDER,"/" + name);
-        if(!dest.exists()) return;
+        Logger.appendToLog("[RuntimeNativeCheck] postPrepare: start name=" + name);
+        File dest = new File(RUNTIME_FOLDER, name);
+        if (!dest.isDirectory()) {
+            Logger.appendToLog("[RuntimeNativeCheck] postPrepare: runtime dir missing, skip");
+            return;
+        }
+
         Runtime runtime = read(name);
         String libFolder = "lib";
-        if(new File(dest,libFolder + "/" + runtime.arch).exists()) libFolder = libFolder + "/" + runtime.arch;
-        File ftIn = new File(dest, libFolder + "/libfreetype.so.6");
-        File ftOut = new File(dest, libFolder + "/libfreetype.so");
-        if (ftIn.exists() && (!ftOut.exists() || ftIn.length() != ftOut.length())) {
-            if(!ftIn.renameTo(ftOut)) throw new IOException("Failed to rename freetype");
+        File archLibDir = new File(dest, libFolder + "/" + runtime.arch);
+        if (archLibDir.isDirectory()) libFolder = libFolder + "/" + runtime.arch;
+
+        File libDir = new File(dest, libFolder);
+        File ftOut = new File(libDir, "libfreetype.so");
+        Logger.appendToLog("[RuntimeNativeCheck] postPrepare: libDir=" + libDir.getAbsolutePath()
+                + " freetypeExists=" + ftOut.isFile() + " bytes=" + (ftOut.exists() ? ftOut.length() : -1));
+        if (!ftOut.isFile() || ftOut.length() == 0) {
+            Logger.appendToLog("[RuntimeNativeCheck] postPrepare: searching for versioned FreeType");
+            File ftIn = findFreetypeLibrary(dest);
+            if (ftIn == null) {
+                String[] entries = libDir.list();
+                String message = "FreeType missing. Runtime=" + dest.getAbsolutePath()
+                        + ", arch=" + runtime.arch + ", libDir=" + libDir.getAbsolutePath()
+                        + ", entries=" + java.util.Arrays.toString(entries);
+                Log.e("MultiRT", message);
+                Logger.appendToLog("[RuntimeNativeCheck] " + message);
+                throw new IOException("Runtime is missing libfreetype.so and its versioned library");
+            }
+
+            // Copy rather than rename: keep the versioned SONAME file intact.
+            // Some runtime archives store libfreetype.so.6 as a symlink to
+            // libfreetype.so.6.x; the recursive search finds the real file.
+            if (ftOut.exists() && !ftOut.delete()) {
+                throw new IOException("Failed to replace invalid libfreetype.so");
+            }
+            FileInputStream in = new FileInputStream(ftIn);
+            FileOutputStream out = new FileOutputStream(ftOut);
+            try {
+                IOUtils.copy(in, out);
+            } finally {
+                in.close();
+                out.close();
+            }
+            Logger.appendToLog("[RuntimeNativeCheck] Prepared FreeType: " + ftIn.getAbsolutePath()
+                    + " -> " + ftOut.getAbsolutePath() + " bytes=" + ftOut.length());
         }
 
         // Refresh libraries
+        Logger.appendToLog("[RuntimeNativeCheck] postPrepare: copying libawt_xawt.so");
         copyDummyNativeLib("libawt_xawt.so", dest, libFolder);
+        Logger.appendToLog("[RuntimeNativeCheck] postPrepare: done");
+    }
+
+    private static boolean isSymlink(File file) {
+        try {
+            Os.readlink(file.getAbsolutePath());
+            return true;
+        } catch (Throwable ignored) {
+            return false;
+        }
+    }
+
+    private static File findFreetypeLibrary(File directory) throws IOException {
+        return findFreetypeLibrary(directory, new HashSet<String>());
+    }
+
+    private static File findFreetypeLibrary(File directory, HashSet<String> visited) throws IOException {
+        String key;
+        try {
+            key = directory.getCanonicalPath();
+        } catch (IOException e) {
+            key = directory.getAbsolutePath();
+        }
+        if (!visited.add(key)) return null;
+
+        File[] children = directory.listFiles();
+        if (children == null) return null;
+        for (File child : children) {
+            String fileName = child.getName();
+            boolean nameMatch = fileName.equals("libfreetype.so")
+                    || fileName.startsWith("libfreetype.so.");
+            // Directory symlinks in the JRE (lib64 -> lib, etc.) make an
+            // unguarded walk recurse forever and the launch log stops here.
+            if (isSymlink(child)) {
+                if (nameMatch && child.isFile() && child.length() > 0) return child;
+                continue;
+            }
+            if (child.isDirectory()) {
+                File found = findFreetypeLibrary(child, visited);
+                if (found != null) return found;
+            } else if (nameMatch && child.isFile() && child.length() > 0) {
+                return child;
+            }
+        }
+        return null;
     }
 
     public static void installRuntimeNamedBinpack(InputStream universalFileInputStream, InputStream platformBinsInputStream, String name, String binpackVersion) throws IOException {
@@ -247,9 +331,12 @@ public class MultiRTUtils {
                 try {
                     // android.system.Os
                     // Libcore one support all Android versions
-                    Os.symlink(tarEntry.getName(), tarEntry.getLinkName());
+                    if (!destPath.delete() && destPath.exists()) {
+                        throw new IOException("Failed to replace runtime symlink: " + destPath);
+                    }
+                    Os.symlink(tarEntry.getLinkName(), destPath.getAbsolutePath());
                 } catch (Throwable e) {
-                    Log.e("MultiRT", e.toString());
+                    throw new IOException("Failed to create runtime symlink: " + destPath, e);
                 }
 
             } else if (tarEntry.isDirectory()) {

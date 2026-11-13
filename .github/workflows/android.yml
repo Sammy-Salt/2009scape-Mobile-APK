@@ -4,11 +4,14 @@ on:
   pull_request:
     branches-ignore:
       - 'l10n_v3_openjdk2'
-    types: [ opened, reopened ]
+    types: [opened, synchronize, reopened, ready_for_review]
   push:
     branches-ignore:
       - 'l10n_v3_openjdk2'
   workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   build:
@@ -17,96 +20,122 @@ jobs:
       GPLAY_KEYSTORE_PASSWORD: ${{ secrets.GPLAY_KEYSTORE_PASSWORD }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Verify source integrity
+        run: bash scripts/verify-source-integrity.sh
+
+      - name: Enable OpenGL initialization for Play SD
+        run: |
+          python3 scripts/patch-rt4-sd-gl-renderer.py app_pojavlauncher/src/main/assets/rt4.jar
+          python3 scripts/patch-rt4-sd-gl-renderer.py --check app_pojavlauncher/src/main/assets/rt4.jar
 
       - name: Set up JDK 8
-        uses: actions/setup-java@v3
+        uses: actions/setup-java@v5
         with:
-          distribution: 'temurin'
+          distribution: temurin
           java-version: '8'
 
-      - name: Get JRE 8
-        uses: dawidd6/action-download-artifact@v2
-        with:
-          workflow: build.yml
-          path: app_pojavlauncher/src/main/assets/components/jre
-          workflow_conclusion: success
-          repo: PojavLauncherTeam/android-openjdk-build-multiarch
-          branch: buildjre8
-          name: jre8-pojav
+      - name: Download and verify Android Java runtimes
+        run: bash scripts/download-runtimes.sh
 
-      - name: Get JRE17
-        uses: dawidd6/action-download-artifact@v2
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6.4.1
         with:
-          workflow: build.yml
-          path: app_pojavlauncher/src/main/assets/components/jre-new
-          workflow_conclusion: success
-          repo: PojavLauncherTeam/android-openjdk-build-multiarch
-          branch: buildjre17
-          name: jre17-pojav
-
-      - uses: gradle/gradle-build-action@v2
-        with:
-          gradle-version: 7.6.1
+          gradle-version: '7.6.1'
+          cache-provider: basic
 
       - name: Build JRE JAR files
         run: |
           ./scripts/languagelist_updater.sh
-
-          mkdir out
-          # Build JRE JAR files (security manager, etc...)
+          mkdir -p out
           gradle :jre_lwjgl3glfw:build --no-daemon
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v3
+        uses: actions/setup-java@v5
         with:
-          distribution: 'temurin'
+          distribution: temurin
           java-version: '17'
 
-      - name: Build Google Play .aab
+      - name: Build Google Play AAB
         if: github.repository_owner == 'PojavLauncherTeam' && github.ref_name == 'v3_openjdk'
         run: |
-          gradle :app_pojavlauncher:bundleGplay
-          mv app_pojavlauncher/build/outputs/bundle/gplay/app_pojavlauncher-gplay.aab out/app-gplay.aab
+          gradle :app_pojavlauncher:bundleGplay --no-daemon
+          mkdir -p out
+          cp app_pojavlauncher/build/outputs/bundle/gplay/app_pojavlauncher-gplay.aab out/app-gplay.aab
 
-      - name: Build Debug .apk
+      - name: Build debug APK with runtimes
         run: |
-          # Build the launcher
-          gradle :app_pojavlauncher:assembleDebug
-          mv app_pojavlauncher/build/outputs/apk/debug/app_pojavlauncher-debug.apk out/app-debug.apk
+          gradle :app_pojavlauncher:assembleDebug --no-daemon
+          mkdir -p out/runtime
+          cp app_pojavlauncher/build/outputs/apk/debug/app_pojavlauncher-debug.apk out/runtime/app-debug.apk
 
-      - name: Build APK without runtime
+      - name: Build debug APK without runtimes
         run: |
-          rm -r app_pojavlauncher/src/main/assets/components/jre
-          rm -r app_pojavlauncher/src/main/assets/components/jre-new
-          gradle assembleDebug
-          mv app_pojavlauncher/build/outputs/apk/debug/app_pojavlauncher-debug.apk out/app-debug-noruntime.apk
-      - name: Gen md5sums
+          rm -rf app_pojavlauncher/src/main/assets/components/jre
+          rm -rf app_pojavlauncher/src/main/assets/components/jre-new
+          gradle :app_pojavlauncher:assembleDebug --no-daemon
+          mkdir -p out/no-runtime
+          cp app_pojavlauncher/build/outputs/apk/debug/app_pojavlauncher-debug.apk out/no-runtime/app-debug-noruntime.apk
+
+      - name: Verify packaged APK contents
         run: |
-          md5sum out/app-debug.apk > out/app-debug.md5
-          md5sum out/app-debug-noruntime.apk > out/app-debug-noruntime.md5
-          
-      - name: Upload APK
-        uses: actions/upload-artifact@v3
-        with:
-          name: app-debug
-          path: out/app-debug.*
+          bash scripts/verify-apk.sh out/runtime/app-debug.apk runtime
+          bash scripts/verify-apk.sh out/no-runtime/app-debug-noruntime.apk no-runtime
 
-      - name: Upload onto the Google Play testing track
-        continue-on-error: true
-        if: github.repository_owner == 'PojavLauncherTeam' && github.ref_name == 'v3_openjdk'
-        uses: r0adkll/upload-google-play@v1.1.1
-        with:
-          serviceAccountJsonPlainText: ${{ secrets.GPLAY_SERVICE_JSON }}
-          packageName: net.kdt.pojavlaunch
-          releaseFiles: out/app-gplay.aab
-          track: internal
-          inAppUpdatePriority: 5
-          changesNotSentForReview: true
+      - name: Verify Play SD OpenGL patch in packaged APKs
+        run: |
+          mkdir -p out/rt4-check
+          for apk in out/runtime/app-debug.apk out/no-runtime/app-debug-noruntime.apk; do
+            unzip -p "$apk" assets/rt4.jar > out/rt4-check/rt4.jar
+            python3 scripts/patch-rt4-sd-gl-renderer.py --check out/rt4-check/rt4.jar
+          done
 
-      - name: Upload APK (without runtime)
-        uses: actions/upload-artifact@v3
-        with:
-          name: app-debug-noruntime
-          path: out/app-debug-noruntime.*
+      - name: Generate build provenance and checksums
+        shell: bash
+        run: |
+          SOURCE_COMMIT="$(git rev-parse HEAD)"
+          GLFW_CLASSES_SHA256="$(sha256sum app_pojavlauncher/src/main/assets/components/lwjgl3/lwjgl-glfw-classes.jar | cut -d' ' -f1)"
+          RUN_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          BUILT_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          for VARIANT in runtime no-runtime; do
+            APK_DIR="out/${VARIANT}"
+            APK="$(find "$APK_DIR" -maxdepth 1 -name '*.apk' -print -quit)"
+            test -n "$APK"
+            cp out/runtime-sources.txt "$APK_DIR/runtime-sources.txt"
+            sha256sum "$APK" "$APK_DIR/runtime-sources.txt" > "$APK_DIR/SHA256SUMS"
+            cat > "$APK_DIR/build-info.json" <<EOF
+          {
+            "repository": "${GITHUB_REPOSITORY}",
+            "source_commit": "${SOURCE_COMMIT}",
+            "triggering_commit": "${GITHUB_SHA}",
+            "lwjgl_glfw_classes_sha256": "${GLFW_CLASSES_SHA256}",
+            "gradle_version": "7.6.1",
+            "build_java_version": "17",
+            "workflow_run_id": "${GITHUB_RUN_ID}",
+            "workflow_run_url": "${RUN_URL}",
+            "built_at_utc": "${BUILT_AT}",
+            "variant": "${VARIANT}",
+            "runtime_sources_file": "runtime-sources.txt"
+          }
+          EOF
+          done
 
+      - name: Upload debug APK with runtimes
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: 2009scape-mobile-debug-runtime-${{ github.run_number }}
+          path: out/runtime/
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload debug APK without runtimes
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: 2009scape-mobile-debug-no-runtime-${{ github.run_number }}
+          path: out/no-runtime/
+          if-no-files-found: error
+          retention-days: 30

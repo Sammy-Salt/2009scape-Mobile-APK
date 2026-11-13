@@ -140,6 +140,11 @@ public class MainActivity extends BaseActivity implements ControlButtonMenuListe
             if(!latestLogFile.exists() && !latestLogFile.createNewFile())
                 throw new IOException("Failed to create a new log file");
             Logger.begin(latestLogFile.getAbsolutePath());
+
+            // RT4 launches through ScapeLauncher -> MainActivity, not JavaGUILauncherActivity.
+            // Start the logcat collector here so EGLBridgeDiag/GLBridge messages reach latestlog.txt.
+            Logger.appendToLog("[SD-EGL-DIAG] MainActivity RT4 launch path; starting native diagnostics collector\n");
+            JREUtils.redirectAndPrintJRELog();
             // FIXME: is it safe for multi thread?
             GLOBAL_CLIPBOARD = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
             touchCharInput.setCharacterSender(new LwjglCharSender());
@@ -159,6 +164,7 @@ public class MainActivity extends BaseActivity implements ControlButtonMenuListe
                     case 2: dialogSendCustomKey(); break;
                     case 3: adjustMouseSpeedLive(); break;
                     case 5: openCustomControls(); break;
+                    case 6: Tools.shareLog(MainActivity.this); break;
                 }
                 drawerLayout.closeDrawers();
             };
@@ -319,6 +325,14 @@ public class MainActivity extends BaseActivity implements ControlButtonMenuListe
             }
             Tools.LOCAL_RENDERER = "opengles2";
             android.util.Log.i("MainActivity", "Applied low-end preset: scale=" + LauncherPreferences.PREF_SCALE_FACTOR);
+        }
+        if (getIntent() != null && getIntent().getBooleanExtra("low_end_preset", false)) {
+            Logger.appendToLog("[SD-EGL-DIAG] Play SD launch config: renderer=" + Tools.LOCAL_RENDERER
+                    + ", scale=" + LauncherPreferences.PREF_SCALE_FACTOR
+                    + ", surface=" + windowWidth + "x" + windowHeight
+                    + ", display=" + (currentDisplayMetrics == null ? "unknown"
+                    : currentDisplayMetrics.widthPixels + "x" + currentDisplayMetrics.heightPixels)
+                    + "\\n");
         }
         Tools.launchGLJRE(this);
     }
