@@ -75,87 +75,11 @@ public class ScapeLauncher extends BaseActivity {
 
 
 
-    /**
-     * Exports the combined launcher and native EGL diagnostics to a unique
-     * text file in Downloads. Native EGL diagnostics append to latestlog.txt.
-     */
+    /** Uses the same verified Downloads exporter as the in-game Share Log action. */
     private void exportLatestLog() {
-        File source = new File(Tools.DIR_GAME_HOME, "latestlog.txt");
-        if (!source.isFile() || !source.canRead()) {
-            Toast.makeText(this, "No readable diagnostic log exists yet. Launch the game first.",
-                    Toast.LENGTH_LONG).show();
-            return;
-        }
-        if (source.length() == 0) {
-            Toast.makeText(this, "The diagnostic log is empty. Launch the game first.",
-                    Toast.LENGTH_LONG).show();
-            return;
-        }
-
-        String timestamp = new java.text.SimpleDateFormat(
-                "yyyyMMdd-HHmmss", java.util.Locale.US).format(new java.util.Date());
-        String fileName = "2009scape-diagnostics-" + timestamp + ".txt";
-
-        try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                android.content.ContentResolver resolver = getContentResolver();
-                Uri downloads = MediaStore.Downloads.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY);
-                ContentValues values = new ContentValues();
-                values.put(MediaStore.MediaColumns.DISPLAY_NAME, fileName);
-                values.put(MediaStore.MediaColumns.MIME_TYPE, "text/plain");
-                values.put(MediaStore.MediaColumns.RELATIVE_PATH,
-                        Environment.DIRECTORY_DOWNLOADS + "/");
-                values.put(MediaStore.MediaColumns.IS_PENDING, 1);
-
-                Uri destination = resolver.insert(downloads, values);
-                if (destination == null) {
-                    throw new IOException("Android could not create the Downloads file");
-                }
-                try {
-                    copyDiagnosticLog(source, resolver.openOutputStream(destination, "w"));
-                    ContentValues ready = new ContentValues();
-                    ready.put(MediaStore.MediaColumns.IS_PENDING, 0);
-                    if (resolver.update(destination, ready, null, null) != 1) {
-                        throw new IOException("Android could not finalize the Downloads file");
-                    }
-                } catch (Exception e) {
-                    resolver.delete(destination, null, null);
-                    throw e;
-                }
-            } else {
-                File downloads = Environment.getExternalStoragePublicDirectory(
-                        Environment.DIRECTORY_DOWNLOADS);
-                if (!downloads.isDirectory() && !downloads.mkdirs()) {
-                    throw new IOException("Could not create the Downloads folder");
-                }
-                copyDiagnosticLog(source, new FileOutputStream(new File(downloads, fileName), false));
-            }
-
-            Toast.makeText(this, "Exported " + fileName + " to Downloads",
-                    Toast.LENGTH_LONG).show();
-            Log.i("ScapeLauncher", "Exported diagnostic log: " + fileName
-                    + " (" + source.length() + " bytes)");
-        } catch (Exception e) {
-            Log.e("ScapeLauncher", "Failed to export diagnostic log", e);
-            String detail = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
-            Toast.makeText(this, "Log export failed: " + detail, Toast.LENGTH_LONG).show();
-        }
+        Tools.shareLog(this);
     }
 
-    private static void copyDiagnosticLog(File source, OutputStream output) throws IOException {
-        if (output == null) {
-            throw new IOException("Android could not open the Downloads file");
-        }
-        try (InputStream input = new FileInputStream(source);
-             OutputStream destination = output) {
-            byte[] buffer = new byte[8192];
-            int count;
-            while ((count = input.read(buffer)) != -1) {
-                destination.write(buffer, 0, count);
-            }
-            destination.flush();
-        }
-    }
 
     private boolean runtimeReady(){
         if(mProgressLayout.hasProcesses()){
