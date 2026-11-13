@@ -767,71 +767,72 @@ public final class Tools {
         MAIN_HANDLER.post(runnable);
     }
 
-    /** Save the current diagnostic log directly into the public Downloads folder. */
+    /** Save the active game's latest diagnostic log directly into public Downloads. */
     public static void shareLog(Context context){
-        File latestLogFile = new File(Tools.DIR_GAME_HOME, "latestlog.txt");
-        if (!latestLogFile.isFile() || !latestLogFile.canRead()) {
-            Toast.makeText(context, "latestlog.txt is missing or unreadable", Toast.LENGTH_LONG).show();
-            Log.e("ShareLogs", "Log file unavailable: " + latestLogFile.getAbsolutePath());
+        File source = new File(Tools.DIR_GAME_HOME, "latestlog.txt");
+        if (!source.isFile() || !source.canRead()) {
+            Toast.makeText(context, "No readable game log found. Launch the game first.", Toast.LENGTH_LONG).show();
+            Log.e("ShareLogs", "Log source unavailable: " + source.getAbsolutePath());
+            return;
+        }
+        if (source.length() == 0L) {
+            Toast.makeText(context, "The game log is empty. Reproduce the issue, then save it again.", Toast.LENGTH_LONG).show();
+            Log.e("ShareLogs", "Refusing to export empty log: " + source.getAbsolutePath());
             return;
         }
 
         String fileName = "2009scape-latestlog-" + System.currentTimeMillis() + ".txt";
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            Uri destinationUri = null;
-            try {
+        Uri destinationUri = null;
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 ContentValues values = new ContentValues();
                 values.put(MediaStore.MediaColumns.DISPLAY_NAME, fileName);
                 values.put(MediaStore.MediaColumns.MIME_TYPE, "text/plain");
-                values.put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS);
+                values.put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS + "/");
                 values.put(MediaStore.MediaColumns.IS_PENDING, 1);
+                Uri downloads = MediaStore.Downloads.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY);
+                destinationUri = context.getContentResolver().insert(downloads, values);
+                if (destinationUri == null) throw new IOException("Android could not create the Downloads file");
 
-                destinationUri = context.getContentResolver().insert(
-                        MediaStore.Downloads.EXTERNAL_CONTENT_URI, values);
-                if (destinationUri == null) {
-                    throw new IOException("Android could not create the Downloads file");
-                }
-
-                try (InputStream input = new FileInputStream(latestLogFile);
+                long copied;
+                try (InputStream input = new FileInputStream(source);
                      OutputStream output = context.getContentResolver().openOutputStream(destinationUri, "w")) {
-                    if (output == null) throw new IOException("Could not open the Downloads file");
-                    IOUtils.copy(input, output);
+                    if (output == null) throw new IOException("Android could not open the Downloads file");
+                    copied = IOUtils.copy(input, output);
                     output.flush();
                 }
-
-                ContentValues completed = new ContentValues();
-                completed.put(MediaStore.MediaColumns.IS_PENDING, 0);
-                context.getContentResolver().update(destinationUri, completed, null, null);
-                Toast.makeText(context, "Diagnostic log saved to Downloads/" + fileName,
-                        Toast.LENGTH_LONG).show();
-                Log.i("ShareLogs", "Saved " + latestLogFile.length() + " bytes to Downloads/" + fileName);
-            } catch (Exception e) {
-                if (destinationUri != null) {
-                    try { context.getContentResolver().delete(destinationUri, null, null); }
-                    catch (Exception ignored) { }
+                if (copied <= 0L || copied != source.length()) {
+                    throw new IOException("Log copy incomplete (" + copied + "/" + source.length() + " bytes)");
                 }
-                Log.e("ShareLogs", "Unable to save latestlog.txt to Downloads", e);
-                Toast.makeText(context, "Could not save log: " + e.getMessage(), Toast.LENGTH_LONG).show();
+                ContentValues ready = new ContentValues();
+                ready.put(MediaStore.MediaColumns.IS_PENDING, 0);
+                if (context.getContentResolver().update(destinationUri, ready, null, null) != 1) {
+                    throw new IOException("Android could not finalize the Downloads file");
+                }
+            } else {
+                File downloads = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
+                if (!downloads.isDirectory() && !downloads.mkdirs()) {
+                    throw new IOException("Could not create the Downloads folder");
+                }
+                File destination = new File(downloads, fileName);
+                try (InputStream input = new FileInputStream(source);
+                     OutputStream output = new FileOutputStream(destination, false)) {
+                    long copied = IOUtils.copy(input, output);
+                    output.flush();
+                    if (copied <= 0L || copied != source.length()) {
+                        throw new IOException("Log copy incomplete (" + copied + "/" + source.length() + " bytes)");
+                    }
+                }
             }
-            return;
-        }
-
-        // Legacy external storage path for Android 9 and earlier.
-        try {
-            File downloads = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
-            if (!downloads.exists() && !downloads.mkdirs()) {
-                throw new IOException("Could not create the Downloads folder");
-            }
-            File destination = new File(downloads, fileName);
-            try (InputStream input = new FileInputStream(latestLogFile);
-                 OutputStream output = new FileOutputStream(destination)) {
-                IOUtils.copy(input, output);
-            }
-            Toast.makeText(context, "Diagnostic log saved to Downloads/" + fileName,
-                    Toast.LENGTH_LONG).show();
+            Toast.makeText(context, "Saved " + fileName + " to Downloads", Toast.LENGTH_LONG).show();
+            Log.i("ShareLogs", "Verified export: Downloads/" + fileName + " (" + source.length() + " bytes)");
         } catch (Exception e) {
-            Log.e("ShareLogs", "Unable to save latestlog.txt to Downloads", e);
-            Toast.makeText(context, "Could not save log: " + e.getMessage(), Toast.LENGTH_LONG).show();
+            if (destinationUri != null) {
+                try { context.getContentResolver().delete(destinationUri, null, null); }
+                catch (Exception cleanupError) { Log.w("ShareLogs", "Could not remove partial export", cleanupError); }
+            }
+            Log.e("ShareLogs", "Unable to save game log to Downloads", e);
+            String detail = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
+            Toast.makeText(context, "Log export failed: " + detail, Toast.LENGTH_LONG).show();
         }
-    }
-}
+    }}
